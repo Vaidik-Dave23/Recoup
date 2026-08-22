@@ -1,4 +1,6 @@
 .venv/
+venv/
+.python-version
 .env
 .env.*
 !.env.example
@@ -8,10 +10,23 @@ __pycache__/
 
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 
 .mypy_cache/
 .ruff_cache/
+.pyre/
+.tox/
+.nox/
+
+build/
+dist/
+*.egg-info/
+
+*.sqlite
+*.sqlite3
+*.db
 
 .vscode/
 .idea/
