@@ -8,6 +8,7 @@ from app.api.routes.ai_investigations import router as ai_investigations_router
 from app.api.routes.recovery_actions import router as recovery_actions_router
 from app.api.routes.recovery_outcomes import router as recovery_outcomes_router
 from app.api.routes.escalations import router as escalations_router
+from app.api.routes.agent import router as agent_router
 
 app = FastAPI(
     title="Recoup API",
@@ -22,3 +23,4 @@ app.include_router(ai_investigations_router)
 app.include_router(recovery_actions_router)
 app.include_router(recovery_outcomes_router)
 app.include_router(escalations_router)
+app.include_router(agent_router)
