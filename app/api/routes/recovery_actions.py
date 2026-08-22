@@ -2,11 +2,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.db.models.merchant_user import MerchantUser
+from app.db.models.recovery_case import RecoveryCase
+from app.db.models.recovery_action import RecoveryAction
 from app.schemas.recovery_action import (
     RecoveryActionCreate,
     RecoveryActionResponse,
@@ -33,6 +36,21 @@ DBSession = Annotated[
     AsyncSession,
     Depends(get_db),
 ]
+
+
+@router.get("", response_model=list[RecoveryActionResponse])
+async def list_all(
+    current_user: CurrentUser,
+    db: DBSession,
+):
+    stmt = (
+        select(RecoveryAction)
+        .join(RecoveryCase, RecoveryAction.case_id == RecoveryCase.id)
+        .where(RecoveryCase.merchant_id == current_user.merchant_id)
+        .order_by(RecoveryAction.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
 @router.post(
@@ -63,6 +81,7 @@ async def create(
     response_model=list[RecoveryActionResponse],
 )
 async def list_for_case(
+
     case_id: UUID,
     current_user: CurrentUser,
     db: DBSession,

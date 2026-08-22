@@ -39,3 +39,10 @@ Thumbs.db
 *.temp
 
 supporting_docs/
+
+# Frontend builds and dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
