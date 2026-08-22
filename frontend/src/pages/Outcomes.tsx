@@ -69,19 +69,11 @@ export const Outcomes: React.FC = () => {
     }, {});
 
   const chartData = Object.entries(dateMap).map(([date, value]) => ({ date, value }));
-  // Sort chronologically (assuming dates are entered sequentially, or mock them if empty)
-  if (chartData.length === 0) {
-    // Add default points for chart rendering
-    chartData.push({ date: 'Aug 18', value: 0 });
-    chartData.push({ date: 'Aug 19', value: 4999 });
-    chartData.push({ date: 'Aug 20', value: 4999 });
-    chartData.push({ date: 'Aug 21', value: 12500 });
-  }
 
   // Draw SVG coordinates
   const width = 500;
   const height = 150;
-  const maxVal = Math.max(...chartData.map((d) => d.value), 1000);
+  const maxVal = chartData.length > 0 ? Math.max(...chartData.map((d) => d.value), 1000) : 1000;
   const padding = 20;
 
   const points = chartData
@@ -151,28 +143,36 @@ export const Outcomes: React.FC = () => {
             {/* Grid Line */}
             <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="var(--border-color)" strokeWidth={1} />
             
-            {/* Area */}
-            <polygon points={areaPoints} fill="rgba(16, 185, 129, 0.04)" />
-            
-            {/* Line */}
-            <polyline fill="none" stroke="var(--color-success)" strokeWidth={2} points={points} />
-            
-            {/* Interactive Circles */}
-            {chartData.map((d, index) => {
-              const x = padding + (index * (width - padding * 2)) / (chartData.length - 1 || 1);
-              const y = height - padding - (d.value * (height - padding * 2)) / maxVal;
-              return (
-                <g key={index}>
-                  <circle cx={x} cy={y} r={3} fill="var(--color-success)" />
-                  <text x={x} y={y - 8} fontSize={8} fill="var(--text-secondary)" textAnchor="middle" fontFamily="var(--font-mono)">
-                    {d.value > 0 ? formatCurrency(d.value) : ''}
-                  </text>
-                  <text x={x} y={height - 4} fontSize={8} fill="var(--text-muted)" textAnchor="middle">
-                    {d.date}
-                  </text>
-                </g>
-              );
-            })}
+            {chartData.length === 0 ? (
+              <text x={width / 2} y={height / 2} fill="var(--text-muted)" textAnchor="middle" fontSize={12}>
+                No recovery events recorded yet.
+              </text>
+            ) : (
+              <>
+                {/* Area */}
+                <polygon points={areaPoints} fill="rgba(16, 185, 129, 0.04)" />
+                
+                {/* Line */}
+                <polyline fill="none" stroke="var(--color-success)" strokeWidth={2} points={points} />
+                
+                {/* Interactive Circles */}
+                {chartData.map((d, index) => {
+                  const x = padding + (index * (width - padding * 2)) / (chartData.length - 1 || 1);
+                  const y = height - padding - (d.value * (height - padding * 2)) / maxVal;
+                  return (
+                    <g key={index}>
+                      <circle cx={x} cy={y} r={3} fill="var(--color-success)" />
+                      <text x={x} y={y - 8} fontSize={8} fill="var(--text-secondary)" textAnchor="middle" fontFamily="var(--font-mono)">
+                        {d.value > 0 ? formatCurrency(d.value) : ''}
+                      </text>
+                      <text x={x} y={height - 4} fontSize={8} fill="var(--text-muted)" textAnchor="middle">
+                        {d.date}
+                      </text>
+                    </g>
+                  );
+                })}
+              </>
+            )}
           </svg>
         </div>
       </div>

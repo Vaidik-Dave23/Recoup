@@ -112,8 +112,11 @@ export const api = {
   },
 
   // Outcomes
-  async getOutcomes(caseId: string) {
-    return request<unknown[]>('GET', `/recovery-outcomes/case/${caseId}`);
+  async getOutcomes(caseId?: string) {
+    if (caseId) {
+      return request<unknown[]>('GET', `/recovery-outcomes/case/${caseId}`);
+    }
+    return request<unknown[]>('GET', '/recovery-outcomes');
   },
 
   // Escalations

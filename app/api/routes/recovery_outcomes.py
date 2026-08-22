@@ -2,11 +2,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.db.models.merchant_user import MerchantUser
+from app.db.models.recovery_case import RecoveryCase
+from app.db.models.recovery_outcome import RecoveryOutcome
 from app.schemas.recovery_outcome import (
     RecoveryOutcomeCreate,
     RecoveryOutcomeResponse,
@@ -35,12 +38,28 @@ DBSession = Annotated[
 ]
 
 
+@router.get("", response_model=list[RecoveryOutcomeResponse])
+async def list_all(
+    current_user: CurrentUser,
+    db: DBSession,
+):
+    stmt = (
+        select(RecoveryOutcome)
+        .join(RecoveryCase, RecoveryOutcome.case_id == RecoveryCase.id)
+        .where(RecoveryCase.merchant_id == current_user.merchant_id)
+        .order_by(RecoveryOutcome.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
 @router.post(
     "",
     response_model=RecoveryOutcomeResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create(
+
     data: RecoveryOutcomeCreate,
     current_user: CurrentUser,
     db: DBSession,
