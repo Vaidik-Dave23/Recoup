@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast';
 
 export const Outcomes: React.FC = () => {
   const [cases, setCases] = useState<any[]>([]);
+  const [outcomes, setOutcomes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -13,8 +14,12 @@ export const Outcomes: React.FC = () => {
   const fetchOutcomesData = async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const data = await api.getCases();
-      setCases(data);
+      const [casesData, outcomesData] = await Promise.all([
+        api.getCases(),
+        api.getOutcomes(),
+      ]);
+      setCases(casesData);
+      setOutcomes(outcomesData);
     } catch (err: any) {
       showToast(err.message || 'Failed to load outcomes data', 'error');
     } finally {
@@ -34,19 +39,19 @@ export const Outcomes: React.FC = () => {
     );
   }
 
-  // Calculate stats
-  const recoveredCases = cases.filter((c) => c.status === 'recovered');
+  // Calculate stats using actual /recovery-outcomes API
+  const recoveredOutcomes = outcomes.filter((o) => o.recovered === true);
+  const totalAtRisk = cases.filter((c) => c.status === 'in_progress').reduce((sum, c) => sum + c.amount_at_risk, 0);
+  const totalRecovered = recoveredOutcomes.reduce((sum, o) => sum + o.amount_recovered, 0);
+  const recoveryRate = cases.length > 0 ? (recoveredOutcomes.length / cases.length) * 100 : 0;
 
-  const totalAtRisk = cases.reduce((sum, c) => sum + c.amount_at_risk, 0);
-  const totalRecovered = cases.reduce((sum, c) => sum + (c.financial_impact || 0), 0);
-  const recoveryRate = cases.length > 0 ? (recoveredCases.length / cases.length) * 100 : 0;
-
-  // Breakdown by Type
-  const typeBreakdown = cases.reduce((acc: Record<string, { count: number; recovered: number }>, c) => {
-    const type = c.case_type;
+  // Breakdown by Type using real outcomes
+  const typeBreakdown = recoveredOutcomes.reduce((acc: Record<string, { count: number; recovered: number }>, o) => {
+    const relatedCase = cases.find((c) => c.id === o.case_id);
+    const type = relatedCase ? relatedCase.case_type : 'unknown';
     if (!acc[type]) acc[type] = { count: 0, recovered: 0 };
     acc[type].count += 1;
-    acc[type].recovered += c.financial_impact || 0;
+    acc[type].recovered += o.amount_recovered;
     return acc;
   }, {});
 
@@ -58,15 +63,12 @@ export const Outcomes: React.FC = () => {
     }).format(amount);
   };
 
-  // Generate coordinates for a clean minimalist SVG Area chart
-  // Group recovery by date
-  const dateMap = cases
-    .filter((c) => c.status === 'recovered')
-    .reduce((acc: Record<string, number>, c) => {
-      const date = new Date(c.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      acc[date] = (acc[date] || 0) + (c.financial_impact || 0);
-      return acc;
-    }, {});
+  // Group recovery by date using real outcomes
+  const dateMap = recoveredOutcomes.reduce((acc: Record<string, number>, o) => {
+    const date = new Date(o.recovered_at || o.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    acc[date] = (acc[date] || 0) + o.amount_recovered;
+    return acc;
+  }, {});
 
   const chartData = Object.entries(dateMap).map(([date, value]) => ({ date, value }));
 
@@ -93,7 +95,7 @@ export const Outcomes: React.FC = () => {
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 600 }}>Financial Recovery Outcomes</h2>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Analytics on recovered cash, resolved disputes, and channel dunning metrics.
+            Analytics on recovered cash, resolved disputes, and dunning retry outcomes.
           </p>
         </div>
         <button onClick={() => fetchOutcomesData(true)} className="btn btn-secondary btn-sm">
@@ -127,7 +129,7 @@ export const Outcomes: React.FC = () => {
         <div className="card">
           <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Recovered Cases</span>
           <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: 'var(--font-mono)', marginTop: '6px' }}>
-            {recoveredCases.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-muted)' }}>/ {cases.length}</span>
+            {recoveredOutcomes.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-muted)' }}>/ {cases.length}</span>
           </div>
         </div>
       </div>
@@ -211,43 +213,46 @@ export const Outcomes: React.FC = () => {
         {/* Recent Wins */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 600 }}>Recent Recovery Wins</h3>
-          {recoveredCases.length === 0 ? (
+          {recoveredOutcomes.length === 0 ? (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
               No payments recovered successfully yet.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {recoveredCases.map((c) => (
-                <div
-                  key={c.id}
-                  onClick={() => navigate(`/recovery/cases/${c.id}`)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '10px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                    backgroundColor: 'rgba(255, 255, 255, 0.01)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <CheckCircle size={16} color="var(--color-success)" />
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
-                        Case {c.id.substring(0, 8)}...
-                      </span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        {c.failure_reason}
-                      </span>
+              {recoveredOutcomes.map((o) => {
+                const relatedCase = cases.find((c) => c.id === o.case_id);
+                return (
+                  <div
+                    key={o.id}
+                    onClick={() => navigate(`/recovery/cases/${o.case_id}`)}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.01)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <CheckCircle size={16} color="var(--color-success)" />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
+                          Case {o.case_id.substring(0, 8)}...
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          {relatedCase ? relatedCase.failure_reason.replace(/_/g, ' ') : 'Recovered'}
+                        </span>
+                      </div>
                     </div>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-success)', fontFamily: 'var(--font-mono)' }}>
+                      +{formatCurrency(o.amount_recovered)}
+                    </span>
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-success)', fontFamily: 'var(--font-mono)' }}>
-                    +{formatCurrency(c.financial_impact)}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
