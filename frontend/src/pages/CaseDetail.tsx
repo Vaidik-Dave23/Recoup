@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Loader2, ArrowLeft, Play, Mail, Terminal } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/currency';
 
 export const CaseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -84,13 +85,7 @@ export const CaseDetail: React.FC = () => {
     );
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: caseData.currency || 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+
 
   const formattedDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('en-IN', {
@@ -168,14 +163,14 @@ export const CaseDetail: React.FC = () => {
               <div>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Amount at Risk</span>
                 <div style={{ fontSize: '24px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--color-error)' }}>
-                  {formatCurrency(caseData.amount_at_risk)}
+                  {formatCurrency(caseData.amount_at_risk, caseData.currency)}
                 </div>
               </div>
               <div style={{ height: '32px', width: '1px', backgroundColor: 'var(--border-color)' }}></div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Recovered Amount</span>
                 <div style={{ fontSize: '24px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--color-success)' }}>
-                  {formatCurrency(caseData.financial_impact || 0)}
+                  {formatCurrency(caseData.financial_impact || 0, caseData.currency)}
                 </div>
               </div>
             </div>

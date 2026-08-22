@@ -1,6 +1,5 @@
 import random
 from typing import Annotated
-from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,7 +107,7 @@ async def execute_scenario(
     # 2. Create payment
     payment_in = PaymentCreate(
         order_id=order_custom_id,
-        amount=Decimal(str(sc["amount"])),
+        amount=sc["amount"],
         currency=sc["currency"],
         payment_method=sc["payment_method"],
         transaction_id=txn_id,

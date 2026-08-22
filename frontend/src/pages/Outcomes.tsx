@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, CheckCircle, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/currency';
 
 export const Outcomes: React.FC = () => {
   const [cases, setCases] = useState<any[]>([]);
@@ -55,13 +56,7 @@ export const Outcomes: React.FC = () => {
     return acc;
   }, {});
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+
 
   // Group recovery by date using real outcomes
   const dateMap = recoveredOutcomes.reduce((acc: Record<string, number>, o) => {

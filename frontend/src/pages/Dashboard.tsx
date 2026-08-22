@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, ArrowRight, TrendingUp, AlertTriangle, ShieldCheck, RefreshCw, Layers } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/currency';
 
 export const Dashboard: React.FC = () => {
   const [data, setData] = useState<any>(null);
@@ -46,13 +47,7 @@ export const Dashboard: React.FC = () => {
   const priorityCases = data?.priority_queue || [];
   const recentActivity = data?.recent_activity || [];
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+
 
   // Calculate percentage for visual summary
   const totalFinancialImpact = kpis.amount_at_risk + kpis.amount_recovered;

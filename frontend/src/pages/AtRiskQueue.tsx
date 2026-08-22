@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, Search, Play, RefreshCw, Eye } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/Toast';
+import { formatCurrency } from '../lib/currency';
 
 export const AtRiskQueue: React.FC = () => {
   const [cases, setCases] = useState<any[]>([]);
@@ -75,13 +76,7 @@ export const AtRiskQueue: React.FC = () => {
     .filter((c) => c.status === 'in_progress')
     .reduce((sum, c) => sum + c.amount_at_risk, 0);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
