@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent import prompts
 from app.agent.email_sender import send_recovery_email
 from app.agent.gemini_client import GeminiCallError, call_json
+from app.agent.razorpay_client import create_recovery_payment_link
 from app.agent.state import RecoveryState
 from app.core.config import settings
 from app.db.models.ai_investigation import AIInvestigation
@@ -148,8 +149,31 @@ class RecoveryAgentNodes:
                 "_generation_error": str(exc),
             }
 
+        # Real Razorpay test-mode payment link: gives the customer an
+        # actual payable checkout instead of a stubbed retry channel.
+        link_result = create_recovery_payment_link(
+            amount=state["amount_at_risk"],
+            currency=state["currency"],
+            description=f"{state['case_type']} recovery -- case {state['case_id'][:8]}",
+            customer_name=state.get("customer_name"),
+            customer_email=state.get("customer_email"),
+            reference_id=f"{state['case_id']}-{state.get('attempt_count', 0) + 1}",
+        )
+        content["payment_link_created"] = link_result.success
+        if link_result.success:
+            content["payment_link_id"] = link_result.payment_link_id
+            content["payment_link_url"] = link_result.short_url
+            content["body"] = (
+                f"{content.get('body', '')}\n\nPay securely here: {link_result.short_url}"
+            )
+        else:
+            content["payment_link_error"] = link_result.error
+
         await self._log(
-            state["case_id"], InvestigationNode.GENERATE_CONTENT, {"strategy": strategy}, content
+            state["case_id"],
+            InvestigationNode.GENERATE_CONTENT,
+            {"strategy": strategy},
+            content,
         )
         investigation_id = await self._latest_investigation_id(state["case_id"])
         action = await create_recovery_action(
@@ -206,7 +230,11 @@ class RecoveryAgentNodes:
             }
 
         action.status = ActionStatus.SENT if send_result["success"] else ActionStatus.FAILED
-        action.provider_ref = send_result.get("provider_ref")
+        provider_ref = send_result.get("provider_ref")
+        link_id = (state.get("content") or {}).get("payment_link_id")
+        if link_id:
+            provider_ref = f"{provider_ref or 'unsent'} | rzp_link:{link_id}"
+        action.provider_ref = provider_ref
         if send_result["success"]:
             action.sent_at = datetime.now(timezone.utc)
         await self.db.commit()

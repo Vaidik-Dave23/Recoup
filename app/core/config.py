@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     recovery_confidence_threshold: float = 0.55
     recovery_max_attempts: int = 3
 
+    # Razorpay test-mode integration (payment links for recovery outreach)
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+
     # Execution channel (optional SMTP delivery)
     smtp_host: str = ""
     smtp_port: int = 587

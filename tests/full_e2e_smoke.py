@@ -9,25 +9,31 @@ escalation_smoke) don't:
   - GET /fault-scenarios, POST /fault-scenarios/{id}/execute
   - a LIVE agent run against a real GEMINI_API_KEY (if set)
   - a REAL email send via your configured SMTP settings (if set)
+  - a REAL Razorpay test-mode Payment Link creation (if RAZORPAY_KEY_ID/SECRET set)
   - both the escalate branch and the retry/resume branch
 
 This does NOT replace the other three smoke tests -- run all four.
+For an isolated, no-DB/no-network unit test of the Razorpay wrapper's
+error handling, see tests/razorpay_client_test.py instead.
 
 Before running, set in your .env (or export in your shell):
   GEMINI_API_KEY=<a real key>          # required to test live agent reasoning
   SMTP_HOST / SMTP_USERNAME / SMTP_PASSWORD / SMTP_FROM_EMAIL   # to test email
+  RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET   # test-mode keys, to test payment links
   TEST_RECIPIENT_EMAIL=<an inbox you can actually check>
 
-If GEMINI_API_KEY or SMTP_* are missing, the relevant checks are skipped with
-a clear message instead of failing -- this script is meant to be run early
-(before those are configured) and again later once they are.
+If GEMINI_API_KEY, SMTP_*, or RAZORPAY_* are missing, the relevant checks are
+skipped with a clear message instead of failing -- this script is meant to be
+run early (before those are configured) and again later once they are.
 
 Run with:  python -m tests.full_e2e_smoke
 
 Note: fault_scenarios.py always generates a fake customer_email
 (customer_<n>@example.com), so a Fault-Lab-seeded case can never actually
 deliver an email. For the live SMTP check, this script creates its own
-order/payment/case with a real, checkable email address instead.
+order/payment/case with a real, checkable email address instead. The fake
+Fault Lab address is still fine for the Razorpay check -- Razorpay's test
+mode does not validate deliverability, only that an email string is present.
 """
 
 import asyncio
@@ -174,6 +180,20 @@ async def main() -> None:
             smtp_configured = merchant_me["channels"]["email"]["configured"]
             results.append(f"PASS  GET /merchants/me (SMTP configured: {smtp_configured})")
 
+            razorpay_reported_configured = merchant_me["channels"]["razorpay_retry"]["configured"]
+            razorpay_actually_configured = bool(
+                settings.razorpay_key_id and settings.razorpay_key_secret
+            )
+            assert razorpay_reported_configured == razorpay_actually_configured, (
+                f"/merchants/me reports razorpay_retry.configured="
+                f"{razorpay_reported_configured}, but settings say "
+                f"{razorpay_actually_configured} -- the endpoint is lying about channel status."
+            )
+            results.append(
+                f"PASS  GET /merchants/me razorpay_retry.configured matches real settings "
+                f"({razorpay_actually_configured})"
+            )
+
             await call(
                 client, "PATCH", "/merchants/me", 200, headers_a,
                 {"business_name": f"E2E A {suffix} (renamed)"},
@@ -215,7 +235,21 @@ async def main() -> None:
                     results.append(f"      Strategy confidence: {conf}")
 
             # ---------------------------------------------------------------
-            print("\n=== 6. Force the escalate branch (hard decline, low confidence expected) ===")
+            print("\n=== 6. Live Razorpay payment link check ===")
+            if not (settings.razorpay_key_id and settings.razorpay_key_secret):
+                results.append(
+                    "SKIP  RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set -- payment link "
+                    "creation was not attempted (see razorpay_client_test.py for the "
+                    "offline unit test of this code path)."
+                )
+            else:
+                await _check_payment_link_for_case(
+                    client, headers_a, fault_case_id, fault_run, results,
+                    label="Fault Lab case",
+                )
+
+            # ---------------------------------------------------------------
+            print("\n=== 7. Force the escalate branch (hard decline, low confidence expected) ===")
             _, _, escalate_case = await create_order_payment_case(
                 client, headers_a, suffix, "esc",
                 customer_email=f"esc-{suffix}@example.com",
@@ -242,7 +276,7 @@ async def main() -> None:
                 )
 
             # ---------------------------------------------------------------
-            print("\n=== 7. LIVE SMTP send + retry-loop check ===")
+            print("\n=== 8. LIVE SMTP send + retry-loop check ===")
             if not TEST_RECIPIENT_EMAIL:
                 results.append(
                     "SKIP  Set TEST_RECIPIENT_EMAIL env var to an inbox you can check, then re-run "
@@ -267,6 +301,12 @@ async def main() -> None:
                     client, headers_a, email_case["id"], TEST_RECIPIENT_EMAIL, results,
                 )
                 await _report_send_attempt(run1, TEST_RECIPIENT_EMAIL, results, attempt=1)
+                if settings.razorpay_key_id and settings.razorpay_key_secret:
+                    await _check_payment_link_for_case(
+                        client, headers_a, email_case["id"], run1, results,
+                        label="Live SMTP case (attempt 1)",
+                        check_in_email_body=True,
+                    )
 
                 if not run1["escalated"] and run1.get("action_id"):
                     # record a failed outcome and confirm the retry loop fires
@@ -289,7 +329,7 @@ async def main() -> None:
                         results.append("NOTE  Resume returned null (case already closed) -- unexpected after a failed outcome, worth a look.")
 
             # ---------------------------------------------------------------
-            print("\n=== 8. Outcomes rollup ===")
+            print("\n=== 9. Outcomes rollup ===")
             outcomes_case = await call(client, "GET", f"/recovery-outcomes/case/{escalate_case['id']}", 200, headers_a)
             results.append(f"PASS  GET /recovery-outcomes/case/{{id}} ({len(outcomes_case)} outcome(s) for that case)")
 
@@ -304,6 +344,74 @@ async def main() -> None:
     print("=" * 70)
     if TEST_RECIPIENT_EMAIL and settings.smtp_host:
         print(f"\n>>> Check {TEST_RECIPIENT_EMAIL} now and tell Claude whether the email(s) arrived. <<<\n")
+
+
+async def _check_payment_link_for_case(
+    client, headers, case_id: str, run: dict, results: list[str], *,
+    label: str, check_in_email_body: bool = False,
+) -> None:
+    """Verify a live Razorpay test-mode Payment Link was actually created
+    for this case's generate_content step, by reading it back from the
+    AI investigation audit log and the persisted RecoveryAction -- not by
+    trusting the in-memory run result alone."""
+    if run.get("escalated") or not run.get("action_id"):
+        results.append(
+            f"NOTE  {label}: case escalated before generate_content ran -- "
+            f"no payment link attempt this run (non-deterministic, re-run to try again)."
+        )
+        return
+
+    investigations = await call(
+        client, "GET", f"/ai-investigations/case/{case_id}", 200, headers,
+    )
+    content_step = next(
+        (i for i in reversed(investigations) if i["node_name"] == "generate_content"), None,
+    )
+    if content_step is None:
+        results.append(f"FAIL  {label}: no generate_content investigation step found to check.")
+        return
+
+    payload = content_step["response_payload"]
+    if not payload.get("payment_link_created"):
+        results.append(
+            f"FAIL  {label}: Razorpay keys are configured but payment_link_created is False "
+            f"-- error was: {payload.get('payment_link_error')}"
+        )
+        return
+
+    link_id = payload.get("payment_link_id")
+    short_url = payload.get("payment_link_url")
+    assert link_id, f"{label}: payment_link_created is True but payment_link_id is missing"
+    assert short_url and short_url.startswith("https://"), (
+        f"{label}: payment_link_url missing or not a real https link: {short_url!r}"
+    )
+    results.append(
+        f"PASS  {label}: real Razorpay payment link created -- {short_url} "
+        f"(id: {link_id})"
+    )
+
+    # Cross-check it also landed on the persisted RecoveryAction, not just
+    # in the investigation log.
+    action = await call(
+        client, "GET", f"/recovery-actions/{run['action_id']}", 200, headers,
+    )
+    assert action.get("provider_ref") and f"rzp_link:{link_id}" in action["provider_ref"], (
+        f"{label}: RecoveryAction.provider_ref does not reference the payment link "
+        f"(got {action.get('provider_ref')!r})"
+    )
+    results.append(f"PASS  {label}: RecoveryAction.provider_ref correctly references {link_id}")
+
+    if check_in_email_body:
+        body = payload.get("body", "")
+        assert short_url in body, (
+            f"{label}: payment link URL was created but never made it into the "
+            f"actual email body that was sent -- customer would not have received it."
+        )
+        results.append(
+            f"PASS  {label}: payment link URL is present in the actual sent email body. "
+            f">>> CHECK YOUR INBOX -- the link should be clickable and open a real "
+            f"Razorpay test-mode checkout page. <<<"
+        )
 
 
 async def _verify_recipient_is_registered_email(

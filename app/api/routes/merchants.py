@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.db.models.merchant import Merchant
@@ -53,6 +54,8 @@ async def get_merchant(
         and os.getenv("SMTP_PASSWORD")
     )
 
+    razorpay_configured = bool(settings.razorpay_key_id and settings.razorpay_key_secret)
+
     return {
         "id": str(merchant.id),
         "name": merchant.name,
@@ -73,9 +76,9 @@ async def get_merchant(
                 "provider": "Twilio (Placeholder)",
             },
             "razorpay_retry": {
-                "configured": True,
-                "status": "active",
-                "provider": "Razorpay API Client",
+                "configured": razorpay_configured,
+                "status": "active" if razorpay_configured else "not_configured",
+                "provider": "Razorpay Payment Links API",
             },
         },
     }
