@@ -99,6 +99,18 @@ class RecoveryAgentNodes:
             }
             confidence = 0.0
 
+        # Hard guarantee, not just a prompt instruction: only "email" has a
+        # live sending provider wired up (see execute node / email_sender.py).
+        # If the model ever ignores the prompt and picks sms/razorpay_retry,
+        # normalize it here rather than silently burning a no-op attempt.
+        if result.get("action_type") != "email" or result.get("channel") != "email":
+            result["_channel_normalized_from"] = {
+                "action_type": result.get("action_type"),
+                "channel": result.get("channel"),
+            }
+            result["action_type"] = "email"
+            result["channel"] = "email"
+
         await self._log(
             state["case_id"],
             InvestigationNode.STRATEGIZE,
