@@ -127,9 +127,20 @@ class RecoveryAgentNodes:
                 else "escalate"
             ),
         }
-
     async def generate_content(self, state: RecoveryState) -> dict[str, Any]:
         strategy = state.get("strategy") or {}
+        # Create the payment link first so we can supply it directly to the prompt
+        link_result = create_recovery_payment_link(
+            amount=state["amount_at_risk"],
+            currency=state["currency"],
+            description=f"{state['case_type']} recovery -- case {state['case_id'][:8]}",
+            customer_name=state.get("customer_name"),
+            customer_email=state.get("customer_email"),
+            reference_id=f"{state['case_id']}-{state.get('attempt_count', 0) + 1}",
+        )
+
+        payment_link = link_result.short_url if link_result.success else "N/A"
+
         prompt = prompts.CONTENT_USER.format(
             channel=strategy.get("channel", "email"),
             tone=strategy.get("tone", "informational"),
@@ -137,6 +148,7 @@ class RecoveryAgentNodes:
             case_type=state["case_type"],
             amount_at_risk=state["amount_at_risk"],
             currency=state["currency"],
+            payment_link=payment_link,
             triage_summary=(state.get("triage") or {}).get("summary", ""),
             strategy_reasoning=strategy.get("reasoning", ""),
         )
@@ -149,23 +161,22 @@ class RecoveryAgentNodes:
                 "_generation_error": str(exc),
             }
 
-        # Real Razorpay test-mode payment link: gives the customer an
-        # actual payable checkout instead of a stubbed retry channel.
-        link_result = create_recovery_payment_link(
-            amount=state["amount_at_risk"],
-            currency=state["currency"],
-            description=f"{state['case_type']} recovery -- case {state['case_id'][:8]}",
-            customer_name=state.get("customer_name"),
-            customer_email=state.get("customer_email"),
-            reference_id=f"{state['case_id']}-{state.get('attempt_count', 0) + 1}",
-        )
         content["payment_link_created"] = link_result.success
         if link_result.success:
             content["payment_link_id"] = link_result.payment_link_id
             content["payment_link_url"] = link_result.short_url
-            content["body"] = (
-                f"{content.get('body', '')}\n\nPay securely here: {link_result.short_url}"
-            )
+            
+            # Bulletproof backup: scrub common placeholders with real values
+            body = content.get("body", "")
+            body = body.replace("[Your Company Name]", "Recoup")
+            body = body.replace("[Company Name]", "Recoup")
+            body = body.replace("[Support Email/Phone Number]", "support@recoup.com")
+            body = body.replace("[Link to Payment Portal]", link_result.short_url)
+            
+            # If the generated text doesn't contain the payment link, append it at the end
+            if link_result.short_url not in body:
+                body = f"{body}\n\nPay securely here: {link_result.short_url}"
+            content["body"] = body
         else:
             content["payment_link_error"] = link_result.error
 

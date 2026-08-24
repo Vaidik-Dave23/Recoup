@@ -146,6 +146,11 @@ async def update_escalation(
 
         if data.status == "resolved":
             escalation.resolved_at = datetime.now(timezone.utc)
+            case_stmt = select(RecoveryCase).where(RecoveryCase.id == escalation.case_id)
+            case_res = await db.execute(case_stmt)
+            case = case_res.scalar_one_or_none()
+            if case:
+                case.status = "closed"
 
     await db.commit()
     await db.refresh(escalation)

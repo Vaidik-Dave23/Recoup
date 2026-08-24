@@ -15,6 +15,12 @@ export const CaseDetail: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
+  const [outcomeAmount, setOutcomeAmount] = useState<number>(0);
+  const [outcomeNotes, setOutcomeNotes] = useState('');
+  const [showOutcomeForm, setShowOutcomeForm] = useState(false);
+  const [isRecoveredVal, setIsRecoveredVal] = useState(true);
+  const [outcomeSubmitting, setOutcomeSubmitting] = useState(false);
+
   const fetchAllDetails = async (quiet = false) => {
     if (!id) return;
     if (!quiet) setLoading(true);
@@ -24,13 +30,41 @@ export const CaseDetail: React.FC = () => {
         api.getAIInvestigations(id).catch(() => []),
         api.getRecoveryActions(id).catch(() => []),
       ]);
-      setCaseData(c);
+      const caseVal = c as any;
+      setCaseData(caseVal);
+      if (caseVal && typeof caseVal.amount_at_risk === 'number') {
+        setOutcomeAmount(caseVal.amount_at_risk);
+      }
       setInvestigations(invs);
       setActions(acts);
     } catch (err: any) {
       showToast(err.message || 'Failed to load case details', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSubmitOutcome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || actions.length === 0) return;
+    setOutcomeSubmitting(true);
+    try {
+      const latestAction = actions[actions.length - 1];
+      await api.createOutcome({
+        case_id: id,
+        action_id: latestAction.id,
+        recovered: isRecoveredVal,
+        amount_recovered: isRecoveredVal ? outcomeAmount : 0,
+        notes: outcomeNotes || (isRecoveredVal ? 'Manual recovery recorded' : 'Manual failure recorded'),
+      });
+      showToast('Outcome recorded successfully!', 'success');
+      setShowOutcomeForm(false);
+      setOutcomeNotes('');
+      await fetchAllDetails(true);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to record outcome', 'error');
+    } finally {
+      setOutcomeSubmitting(false);
     }
   };
 
@@ -214,6 +248,96 @@ export const CaseDetail: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Record Recovery Outcome Card */}
+          {caseData.status === 'in_progress' && actions.length > 0 && (
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h3 style={{ fontSize: '13px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                Record Recovery Outcome
+              </h3>
+              
+              {!showOutcomeForm ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.4' }}>
+                    Manually log the recovery result for this case based on customer response or direct payment validation.
+                  </p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        setIsRecoveredVal(true);
+                        setShowOutcomeForm(true);
+                      }}
+                      className="btn btn-primary"
+                      style={{ flex: 1, backgroundColor: 'var(--color-success)', borderColor: 'var(--color-success)', color: '#fff', fontSize: '12px', padding: '8px' }}
+                    >
+                      Mark as Recovered
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsRecoveredVal(false);
+                        setShowOutcomeForm(true);
+                      }}
+                      className="btn btn-secondary"
+                      style={{ flex: 1, borderColor: 'var(--color-error)', color: 'var(--color-error)', fontSize: '12px', padding: '8px' }}
+                    >
+                      Mark Attempt Failed
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitOutcome} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: isRecoveredVal ? 'var(--color-success)' : 'var(--color-error)' }}>
+                    Recording: {isRecoveredVal ? 'SUCCESSFUL RECOVERY' : 'FAILED RECOVERY ATTEMPT'}
+                  </div>
+
+                  {isRecoveredVal && (
+                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Recovered Amount ({caseData.currency})</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        required
+                        value={outcomeAmount}
+                        onChange={(e) => setOutcomeAmount(parseInt(e.target.value) || 0)}
+                        style={{ fontSize: '13px', padding: '8px' }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Internal Outcome Notes</label>
+                    <textarea
+                      className="form-input"
+                      rows={2}
+                      placeholder="Optional details..."
+                      value={outcomeNotes}
+                      onChange={(e) => setOutcomeNotes(e.target.value)}
+                      style={{ fontSize: '13px', padding: '8px', resize: 'vertical' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowOutcomeForm(false)}
+                      className="btn btn-secondary btn-sm"
+                      style={{ flex: 1, fontSize: '11px' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={outcomeSubmitting}
+                      className="btn btn-primary btn-sm"
+                      style={{ flex: 1, fontSize: '11px' }}
+                    >
+                      {outcomeSubmitting ? 'Saving...' : 'Save Outcome'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
 
           {/* Lifecycle Timeline */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

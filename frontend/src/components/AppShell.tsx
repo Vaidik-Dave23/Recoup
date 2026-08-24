@@ -12,7 +12,6 @@ import {
   LogOut,
   User,
   Activity,
-  CheckCircle,
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -238,29 +237,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children, user, onLogout }) 
             </h1>
           </div>
 
-          {/* Database / Connection status indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                backgroundColor: 'rgba(16, 185, 129, 0.05)',
-                border: '1px solid rgba(16, 185, 129, 0.15)',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-sm)',
-              }}
-            >
-              <CheckCircle size={10} color="var(--color-success)" className="animate-pulse" />
-              <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--color-success)', fontFamily: 'var(--font-mono)' }}>
-                Live Connection
-              </span>
-            </div>
 
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              Supabase DB: Connected
-            </div>
-          </div>
         </header>
 
         {/* Page Content Panel */}

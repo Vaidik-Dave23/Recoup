@@ -39,6 +39,8 @@ async def _initial_state(db: AsyncSession, merchant_id: UUID, case: RecoveryCase
 
 async def run_case(db: AsyncSession, merchant_id: UUID, case_id: UUID) -> RecoveryState:
     case = await _load_case(db, merchant_id, case_id)
+    if case.status != RecoveryCaseStatus.IN_PROGRESS:
+        raise ValueError("Cannot run recovery agent on a resolved case")
     final_state = await build_first_pass_graph(db, merchant_id).ainvoke(
         await _initial_state(db, merchant_id, case)
     )

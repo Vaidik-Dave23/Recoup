@@ -60,6 +60,9 @@ export const AtRiskQueue: React.FC = () => {
 
   // Filtering
   const filteredCases = cases.filter((c) => {
+    // Only show active/in_progress cases in the At-Risk queue
+    if (c.status !== 'in_progress') return false;
+
     const matchesSearch =
       c.id.toLowerCase().includes(search.toLowerCase()) ||
       c.failure_reason.toLowerCase().includes(search.toLowerCase()) ||

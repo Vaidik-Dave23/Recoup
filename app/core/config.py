@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Razorpay test-mode integration (payment links for recovery outreach)
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
 
     # Execution channel (optional SMTP delivery)
     smtp_host: str = ""

@@ -14,13 +14,14 @@ Case type: {case_type}
 Amount at risk: {amount_at_risk} {currency}
 Attempt number: {attempt_number}"""
 
-CONTENT_SYSTEM = """Write a concise, real recovery message on behalf of a merchant. Return only JSON with subject and body. Mention the payment situation naturally, give a clear next step, and do not use markdown."""
+CONTENT_SYSTEM = """Write a concise, real recovery message on behalf of the company Recoup. Return only JSON with subject and body. Mention the payment situation naturally, give a clear next step, and do not use markdown. Include the provided payment link naturally in the email body. Do not generate placeholders like [Link to Payment Portal], [Your Company Name], or [Support Email/Phone Number]. Always sign off as the Recoup Recovery Team."""
 
 CONTENT_USER = """Channel: {channel}
 Tone: {tone}
 Customer name: {customer_name}
 Case type: {case_type}
 Amount at risk: {amount_at_risk} {currency}
+Payment Link: {payment_link}
 Triage summary: {triage_summary}
 Strategy reasoning: {strategy_reasoning}"""
 

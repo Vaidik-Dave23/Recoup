@@ -6,6 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.payment import Payment
 from app.db.models.recovery_case import RecoveryCase
 from app.schemas.recovery_case import RecoveryCaseCreate, RecoveryCaseUpdate
+from app.agent.razorpay_client import fetch_payment_link_status
+from app.db.models.recovery_action import RecoveryAction
+from app.db.models.recovery_outcome import RecoveryOutcome
+from app.schemas.recovery_outcome import RecoveryOutcomeCreate
+from app.services.recovery_outcome_service import create_recovery_outcome
 
 
 async def create_recovery_case(
@@ -58,7 +63,12 @@ async def get_recovery_cases(
         .order_by(RecoveryCase.created_at.desc())
     )
 
-    return list(result.scalars().all())
+    cases = list(result.scalars().all())
+    import asyncio
+    active_cases = [c for c in cases if c.status == "in_progress"]
+    if active_cases:
+        await asyncio.gather(*(sync_case_payment_status(db, merchant_id, c) for c in active_cases))
+    return cases
 
 
 async def get_recovery_case(
@@ -73,7 +83,10 @@ async def get_recovery_case(
         )
     )
 
-    return result.scalar_one_or_none()
+    case = result.scalar_one_or_none()
+    if case is not None:
+        await sync_case_payment_status(db, merchant_id, case)
+    return case
 
 
 async def update_recovery_case(
@@ -104,3 +117,47 @@ async def update_recovery_case(
     await db.refresh(case)
 
     return case
+
+
+async def sync_case_payment_status(db: AsyncSession, merchant_id: UUID, case: RecoveryCase) -> None:
+    if case.status != "in_progress":
+        return
+
+    # Find all sent actions for this case that have a payment link reference
+    stmt = select(RecoveryAction).where(
+        RecoveryAction.case_id == case.id,
+        RecoveryAction.status == "sent"
+    )
+    actions_result = await db.execute(stmt)
+    actions = actions_result.scalars().all()
+
+    for action in actions:
+        if not action.provider_ref or "rzp_link:" not in action.provider_ref:
+            continue
+        
+        try:
+            parts = action.provider_ref.split("rzp_link:")
+            payment_link_id = parts[1].strip()
+        except Exception:
+            continue
+        
+        try:
+            status_data = fetch_payment_link_status(payment_link_id)
+            link_status = status_data.get("status")
+        except Exception:
+            continue
+        
+        if link_status == "paid":
+            # Record recovery outcome
+            outcome_stmt = select(RecoveryOutcome).where(RecoveryOutcome.action_id == action.id)
+            existing_outcome = (await db.execute(outcome_stmt)).scalar_one_or_none()
+            if not existing_outcome:
+                outcome_data = RecoveryOutcomeCreate(
+                    case_id=case.id,
+                    action_id=action.id,
+                    recovered=True,
+                    amount_recovered=case.amount_at_risk,
+                    notes=f"Auto-synced payment via Razorpay link: {payment_link_id}"
+                )
+                await create_recovery_outcome(db, merchant_id, outcome_data)
+                break

@@ -119,6 +119,16 @@ export const api = {
     return request<unknown[]>('GET', '/recovery-outcomes');
   },
 
+  async createOutcome(payload: {
+    case_id: string;
+    action_id: string;
+    recovered: boolean;
+    amount_recovered: number;
+    notes?: string;
+  }) {
+    return request<unknown>('POST', '/recovery-outcomes', payload);
+  },
+
   // Escalations
   async getEscalations() {
     return request<unknown[]>('GET', '/escalations');
