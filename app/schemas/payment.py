@@ -1,6 +1,7 @@
 from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict, Field
+from app.db.models.enums import PaymentStatus
+
 
 
 class PaymentCreate(BaseModel):
@@ -19,6 +20,9 @@ class PaymentCreate(BaseModel):
         min_length=1,
         max_length=100,
     )
+    status: PaymentStatus | None = Field(default=PaymentStatus.CREATED)
+    failure_reason: str | None = Field(default=None, max_length=255)
+
 
 
 class PaymentResponse(BaseModel):

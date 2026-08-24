@@ -53,8 +53,10 @@ async def resume_after_outcome(
     db: AsyncSession, merchant_id: UUID, case_id: UUID
 ) -> RecoveryState | None:
     case = await _load_case(db, merchant_id, case_id)
-    if case.status == RecoveryCaseStatus.RECOVERED:
+    if case.status in (RecoveryCaseStatus.RECOVERED, RecoveryCaseStatus.CLOSED):
         return None
+
+
     state = await _initial_state(db, merchant_id, case)
     if case.status == RecoveryCaseStatus.ESCALATED:
         existing = await db.scalar(

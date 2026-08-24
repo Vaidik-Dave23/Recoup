@@ -6,14 +6,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class RecoveryCaseCreate(BaseModel):
     payment_id: UUID
-    case_type: str = Field(min_length=1, max_length=100)
-    failure_reason: str = Field(min_length=1, max_length=1000)
-    amount_at_risk: int = Field(gt=0)
-    currency: str = Field(
-        default="INR",
+    case_type: str | None = Field(default=None, min_length=1, max_length=100)
+    failure_reason: str | None = Field(default=None, min_length=1, max_length=1000)
+    amount_at_risk: int | None = Field(default=None, gt=0)
+    currency: str | None = Field(
+        default=None,
         min_length=3,
         max_length=3,
     )
+
 
 
 class RecoveryCaseUpdate(BaseModel):

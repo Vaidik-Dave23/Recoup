@@ -4,10 +4,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.enums import RecoveryCaseStatus, RecoveryStage
+from app.core.config import settings
+from app.db.models.enums import RecoveryCaseStatus, RecoveryStage, PaymentStatus, OrderStatus
 from app.db.models.recovery_action import RecoveryAction
 from app.db.models.recovery_case import RecoveryCase
 from app.db.models.recovery_outcome import RecoveryOutcome
+from app.db.models.payment import Payment
+from app.db.models.order import Order
 from app.schemas.recovery_outcome import RecoveryOutcomeCreate
 
 
@@ -27,6 +30,9 @@ async def create_recovery_outcome(
 
     if case is None:
         raise ValueError("Recovery case not found")
+
+    if data.recovered and case.status == RecoveryCaseStatus.RECOVERED:
+        raise ValueError("Recovery outcome already recorded as successful for this case")
 
     result = await db.execute(
         select(RecoveryAction).where(
@@ -80,14 +86,28 @@ async def create_recovery_outcome(
         case.status = RecoveryCaseStatus.RECOVERED
         case.stage = RecoveryStage.RECOVERED
 
+        if case.payment_id:
+            payment_res = await db.execute(
+                select(Payment).where(Payment.id == case.payment_id)
+            )
+            payment = payment_res.scalar_one_or_none()
+            if payment:
+                payment.status = PaymentStatus.SUCCEEDED
+                order_res = await db.execute(
+                    select(Order).where(Order.id == payment.order_id)
+                )
+                order = order_res.scalar_one_or_none()
+                if order:
+                    order.status = OrderStatus.PAID
+
     else:
         case.attempt_count += 1
 
-        if case.attempt_count >= 3:
-            case.status = "escalated"
-            case.stage = "escalated"
+        if case.attempt_count >= settings.recovery_max_attempts:
+            case.status = RecoveryCaseStatus.ESCALATED
+            case.stage = RecoveryStage.ESCALATED
         else:
-            case.status = "in_progress"
+            case.status = RecoveryCaseStatus.IN_PROGRESS
 
     await db.commit()
     await db.refresh(outcome)

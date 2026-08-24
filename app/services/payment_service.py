@@ -3,9 +3,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.enums import PaymentStatus
 from app.db.models.order import Order
 from app.db.models.payment import Payment
 from app.schemas.payment import PaymentCreate
+
 
 
 async def create_payment(
@@ -40,13 +42,17 @@ async def create_payment(
 
     # Create payment
     payment = Payment(
+
         merchant_id=merchant_id,
         order_id=order.id,
         amount=data.amount,
         currency=data.currency.upper(),
         razorpay_payment_id=data.transaction_id,
         payment_method=data.payment_method,
+        status=data.status or PaymentStatus.CREATED,
+        failure_reason=data.failure_reason,
     )
+
 
     db.add(payment)
 

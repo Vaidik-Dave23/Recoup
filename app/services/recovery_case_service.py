@@ -13,6 +13,8 @@ from app.schemas.recovery_outcome import RecoveryOutcomeCreate
 from app.services.recovery_outcome_service import create_recovery_outcome
 
 
+from app.db.models.enums import PaymentStatus, RecoveryCaseStatus, RecoveryStage
+
 async def create_recovery_case(
     db: AsyncSession,
     merchant_id: UUID,
@@ -30,16 +32,39 @@ async def create_recovery_case(
     if payment is None:
         raise ValueError("Payment not found")
 
+    if payment.status == PaymentStatus.SUCCEEDED:
+        raise ValueError("Cannot create a recovery case for a succeeded payment")
+
+    if data.case_type == "payment_failed" and payment.status not in (PaymentStatus.FAILED, PaymentStatus.CREATED):
+        raise ValueError(
+            f"Cannot create a 'payment_failed' recovery case for a payment with status '{payment.status}'"
+        )
+
+    if data.amount_at_risk is not None and data.amount_at_risk != payment.amount:
+        raise ValueError(
+            f"Case amount_at_risk ({data.amount_at_risk}) does not match Payment amount ({payment.amount})"
+        )
+    amount_at_risk = payment.amount
+
+    if data.currency is not None and data.currency.upper() != payment.currency.upper():
+        raise ValueError(
+            f"Case currency ({data.currency}) does not match Payment currency ({payment.currency})"
+        )
+    currency = payment.currency
+
+    failure_reason = payment.failure_reason or data.failure_reason or "Payment failed"
+    case_type = data.case_type or "payment_failed"
+
     case = RecoveryCase(
         merchant_id=merchant_id,
         payment_id=payment.id,
-        case_type=data.case_type,
-        failure_reason=data.failure_reason,
-        amount_at_risk=data.amount_at_risk,
-        currency=data.currency.upper(),
-        stage="new",
+        case_type=case_type,
+        failure_reason=failure_reason,
+        amount_at_risk=amount_at_risk,
+        currency=currency.upper(),
+        stage=RecoveryStage.NEW,
         attempt_count=0,
-        status="in_progress",
+        status=RecoveryCaseStatus.IN_PROGRESS,
         financial_impact=0,
     )
 
@@ -49,6 +74,7 @@ async def create_recovery_case(
     await db.refresh(case)
 
     return case
+
 
 
 async def get_recovery_cases(

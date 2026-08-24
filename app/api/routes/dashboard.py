@@ -55,12 +55,19 @@ async def get_overview(
     )
     recovered_count = (await db.execute(recovered_stmt)).scalar() or 0
 
-    # Total at-risk amount
+    # Total at-risk amount (in_progress + escalated)
     at_risk_amt_stmt = select(func.sum(RecoveryCase.amount_at_risk)).where(
         RecoveryCase.merchant_id == merchant_id,
-        RecoveryCase.status == RecoveryCaseStatus.IN_PROGRESS,
+        RecoveryCase.status.in_([RecoveryCaseStatus.IN_PROGRESS, RecoveryCaseStatus.ESCALATED]),
     )
     at_risk_amount = (await db.execute(at_risk_amt_stmt)).scalar() or 0
+
+    # Escalated cases count
+    escalated_stmt = select(func.count(RecoveryCase.id)).where(
+        RecoveryCase.merchant_id == merchant_id,
+        RecoveryCase.status == RecoveryCaseStatus.ESCALATED,
+    )
+    escalated_count = (await db.execute(escalated_stmt)).scalar() or 0
 
     # Total recovered amount
     recovered_amt_stmt = select(
@@ -76,6 +83,7 @@ async def get_overview(
     recovery_rate = (
         (recovered_count / total_count * 100) if total_count > 0 else 0
     )
+
 
     # 2. Priority queue: Top at-risk cases in_progress
     pq_stmt = (
@@ -106,10 +114,12 @@ async def get_overview(
             "active_cases": active_count,
             "total_cases": total_count,
             "recovered_cases": recovered_count,
+            "escalated_cases": escalated_count,
             "amount_at_risk": int(at_risk_amount),
             "amount_recovered": int(recovered_amount),
             "recovery_rate": round(recovery_rate, 1),
         },
+
         "priority_queue": [
             {
                 "id": str(c.id),

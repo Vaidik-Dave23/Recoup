@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
+from app.db.models.enums import PaymentStatus
 from app.db.models.merchant_user import MerchantUser
 from app.schemas.order import OrderCreate
 from app.schemas.payment import PaymentCreate
@@ -12,6 +13,7 @@ from app.schemas.recovery_case import RecoveryCaseCreate
 from app.services.order_service import create_order
 from app.services.payment_service import create_payment
 from app.services.recovery_case_service import create_recovery_case
+
 
 router = APIRouter(
     prefix="/fault-scenarios",
@@ -105,14 +107,18 @@ async def execute_scenario(
     order = await create_order(db, current_user.merchant_id, order_in)
 
     # 2. Create payment
+
     payment_in = PaymentCreate(
         order_id=order_custom_id,
         amount=sc["amount"],
         currency=sc["currency"],
         payment_method=sc["payment_method"],
         transaction_id=txn_id,
+        status=PaymentStatus.FAILED,
+        failure_reason=sc["failure_reason"],
     )
     payment = await create_payment(db, current_user.merchant_id, payment_in)
+
 
     # 3. Create case
     case_in = RecoveryCaseCreate(
