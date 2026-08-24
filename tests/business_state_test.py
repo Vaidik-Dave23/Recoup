@@ -4,10 +4,11 @@ Unlike full_e2e_smoke, this tests the exact state changes in the database and en
 """
 
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import select, delete
+
 
 from app.db.database import AsyncSessionLocal
 from app.db.models.merchant import Merchant
@@ -86,9 +87,10 @@ async def main() -> None:
             
             # Verify status in database
             async with AsyncSessionLocal() as session:
-                db_payment = await session.get(Payment, uuid4().UUID(payment_failed["id"]) if hasattr(uuid4(), "UUID") else payment_failed["id"])
+                db_payment = await session.get(Payment, UUID(payment_failed["id"]))
                 assert db_payment.status == PaymentStatus.FAILED, f"Expected FAILED enum, got {db_payment.status}"
                 assert db_payment.failure_reason == "card declined"
+
 
             print("\n=== 3. Test Recovery Case authoritative derivation ===")
             # Omit case_type, failure_reason, amount_at_risk, currency and ensure they are derived from Payment
