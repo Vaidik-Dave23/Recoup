@@ -14,16 +14,25 @@ from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.fault_scenarios import router as fault_scenarios_router
 from app.api.routes.audit_logs import router as audit_logs_router
 from app.api.routes.merchants import router as merchants_router
+from app.core.config import settings
 
 app = FastAPI(
     title="Recoup API",
     version="1.0.0",
 )
 
+# CORS Configuration
+origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+if settings.frontend_url:
+    for url in settings.frontend_url.split(","):
+        url_stripped = url.strip()
+        if url_stripped and url_stripped not in origins:
+            origins.append(url_stripped)
+
 # Enable CORS for frontend local development and standard origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
