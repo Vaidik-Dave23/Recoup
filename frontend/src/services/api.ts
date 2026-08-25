@@ -1,6 +1,6 @@
 // Recoup Frontend API Service - Integration with FastAPI Backend
 
-const BASE_URL = '/api';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 function getHeaders(): HeadersInit {
   const token = localStorage.getItem('recoup_token');
