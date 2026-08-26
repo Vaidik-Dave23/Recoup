@@ -22,7 +22,7 @@ app = FastAPI(
 )
 
 # CORS Configuration
-origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+origins = ["http://localhost:5173", "http://127.0.0.1:5173", "https://recoup-one.vercel.app"]
 if settings.frontend_url:
     for url in settings.frontend_url.split(","):
         url_stripped = url.strip()
