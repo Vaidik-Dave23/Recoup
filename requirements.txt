@@ -6,7 +6,7 @@ alembic
 pydantic-settings
 python-dotenv
 python-jose[cryptography]
-passlib[bcrypt]
+bcrypt
 email-validator
 langgraph
 google-genai
