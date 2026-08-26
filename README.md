@@ -1,78 +1,331 @@
 # Recoup
 
-**An AI agent that recovers revenue lost to failed payments, abandoned checkouts, and overdue invoices — built for the Razorpay AI Buildathon (Track 3: AI Revenue Recovery).**
+### AI-Powered Payment Recovery Platform
 
-Recoup watches for money that should have landed but didn't, decides what to do about it, and either acts autonomously or hands off to a human — with an audit trail for every decision, a hard cap on retries, and real Razorpay payment links doing the actual recovery work.
+Recoup is an end-to-end revenue recovery platform that helps merchants investigate failed or at-risk payments, generate recovery strategies with AI, execute recovery outreach, and escalate uncertain cases to humans.
 
----
+The project combines a React dashboard, FastAPI API, PostgreSQL persistence, a LangGraph recovery agent powered by Gemini, Razorpay test-mode Payment Links, optional SMTP delivery, and a Fault Lab for reproducible recovery scenarios.
 
-## What it does
-
-1. **Detects** a failed payment, an abandoned checkout, or an overdue invoice
-2. **Triages** the case with Gemini — what happened, how urgent, what's known
-3. **Strategizes** a recovery approach and scores its own confidence
-4. **Generates** outreach content and a real, payable Razorpay Payment Link (test mode)
-5. **Executes** — sends the email, or **escalates to a human** if confidence is too low or the channel isn't safely automatable
-6. **Retries up to 3 times**, then force-escalates if nothing's worked — the agent cannot loop forever
-7. **Closes the loop** — a Razorpay webhook (or manual sync, for local dev) marks the case recovered the moment the customer actually pays
-
-Every step is logged to an `AIInvestigation` audit trail: what the agent saw, what it decided, and why.
+> **Live demo:** https://recoup-one.vercel.app  
+> **Repository:** https://github.com/Vaidik-Dave23/Recoup
 
 ---
 
 ## Architecture
 
-```
-FastAPI backend (app/)
-├── LangGraph agent (app/agent/)
-│   ├── triage → strategize → generate_content → execute → escalate
-│   ├── confidence-gated routing (low confidence → escalate, not guess)
-│   ├── razorpay_client.py — real test-mode Payment Links API
-│   └── email_sender.py — real SMTP delivery
-├── REST API (app/api/routes/)
-│   ├── orders, payments, recovery-cases, recovery-actions, recovery-outcomes
-│   ├── ai-investigations (the audit trail)
-│   ├── escalations, fault-scenarios (Fault Lab), dashboard, merchants
-│   └── webhooks — Razorpay payment_link.paid closes the recovery loop
-└── Postgres (SQLAlchemy async + Alembic migrations)
+![Recoup Architecture](architecture.png)
 
-React + TypeScript frontend (frontend/)
-├── Dashboard — KPIs: at-risk, recovered, recovery rate
-├── Fault Lab — seed realistic failure scenarios with one click
-├── Case Detail / Agent Trace — run the agent, watch every step
-├── Recovery Actions / Escalations / Outcomes
-└── Vite dev server, proxies /api → FastAPI on :8000
-```
+The system is organized into six major layers:
 
-### Why a real Razorpay integration, not a mock
-
-The recovery loop only means something if the payment link the agent generates is real. `generate_content()` calls Razorpay's actual test-mode **Payment Links API**, embeds the live link in the outreach email, and the resulting `payment_link_id` is tracked on the `RecoveryAction` record. When the customer pays it — for real, through Razorpay's own checkout — a webhook (or the manual sync fallback) marks the case `recovered` and records the exact amount. Nothing about "recovered revenue" in this app is simulated once real keys are configured.
-
-### Stopping rules & escalation
-
-- A confidence threshold (`RECOVERY_CONFIDENCE_THRESHOLD`, default `0.55`) gates every action: below it, the agent stops and escalates to a human with a written handoff summary instead of guessing.
-- A hard attempt cap (`RECOVERY_MAX_ATTEMPTS`, default `3`) forces escalation once retries are exhausted — the agent cannot retry indefinitely.
-- Only the `email` channel is actually wired to a live provider; this is enforced server-side, not just by prompting the model, so it can't silently no-op on an unimplemented channel.
+1. **Frontend** - React + TypeScript + Vite dashboard for authentication, case management, investigations, actions, outcomes, escalations, audit logs, and Fault Lab scenarios.
+2. **Backend API** - FastAPI with JWT authentication, CORS, request validation, merchant isolation, recovery services, and REST endpoints.
+3. **AI Agent** - LangGraph orchestration with Gemini for triage, strategy generation, recovery content, execution, and human escalation.
+4. **Data Layer** - PostgreSQL accessed asynchronously through SQLAlchemy, with Alembic for migrations.
+5. **Integrations** - Razorpay test-mode Payment Links and optional SMTP email delivery.
+6. **Infrastructure** - Vercel for the frontend and Azure App Service for the FastAPI backend, with Azure deployment/runtime logs.
 
 ---
 
-## Setup
+## The Recovery Flow
+
+```text
+Payment / Recovery Case
+        |
+        v
+     TRIAGE
+        |
+        v
+   STRATEGIZE
+        |
+        | confidence >= threshold
+        +----------------------+
+        |                      |
+        v                      v
+ GENERATE CONTENT          ESCALATE
+        |                  TO HUMAN
+        v
+ EXECUTE RECOVERY
+        |
+        +----> Razorpay Payment Link (test mode)
+        |
+        +----> Optional SMTP email
+        |
+        v
+   Recovery Outcome
+        |
+        v
+   Audit / Timeline
+```
+
+The important design decision is that the model does **not** get unlimited authority. The backend enforces recovery constraints, including a confidence threshold and maximum retry count. If the strategy does not meet the configured confidence threshold, the graph routes the case to escalation instead of executing an uncertain action.
+
+---
+
+## Core Features
+
+### AI-powered investigation
+
+- Gemini-powered triage of payment/recovery problems.
+- Strategy generation with confidence scoring.
+- AI-generated customer recovery content.
+- Agent trace stored as structured investigation records.
+- Human escalation with an AI-generated handoff summary when confidence is too low.
+
+### Recovery execution
+
+- Generates Razorpay Payment Links in **test mode**.
+- Supports optional SMTP delivery for recovery emails.
+- Records recovery actions and provider references.
+- Tracks recovery outcomes and case state.
+- Enforces a configurable maximum number of recovery attempts.
+
+### Merchant operations dashboard
+
+- Dashboard KPIs and recovery overview.
+- At-risk recovery queue.
+- Detailed recovery case view.
+- Agent trace for individual cases.
+- Recovery actions and outcomes.
+- Escalation management.
+- Audit log / investigation history.
+- Merchant settings.
+
+### Fault Lab
+
+Fault Lab provides deterministic scenarios for demonstrating and testing the recovery workflow without needing a live merchant payment integration.
+
+Scenarios can be executed through the application and then passed through the same case, investigation, agent, action, escalation, and outcome flows used by the rest of the system.
+
+---
+
+## AI Agent Architecture
+
+The recovery agent is implemented with **LangGraph** as a stateful workflow.
+
+### First-pass run
+
+```text
+TRIAGE
+  |
+  v
+STRATEGIZE
+  |
+  +---- confidence below threshold ----> ESCALATE
+  |
+  | confidence meets threshold
+  v
+GENERATE_CONTENT
+  |
+  v
+EXECUTE
+```
+
+### Retry run
+
+Retries start from the strategy stage rather than repeating the initial triage step. The backend tracks attempt count and uses `RECOVERY_MAX_ATTEMPTS` to prevent indefinite retries.
+
+### Confidence-gated execution
+
+The agent's strategy includes a confidence score. The backend compares that score against:
+
+```text
+RECOVERY_CONFIDENCE_THRESHOLD=0.55
+```
+
+A strategy below the threshold is routed to human escalation.
+
+This is intentionally enforced in application logic rather than relying only on a prompt instruction.
+
+---
+
+## Security and Reliability
+
+### Authentication
+
+- JWT-based authentication.
+- Protected merchant routes require an authenticated user.
+- Merchant-scoped queries prevent users from accessing another merchant's records.
+
+### Password hashing
+
+The project uses direct `bcrypt` rather than the previously used `passlib` wrapper.
+
+Passwords are SHA-256 pre-hashed before bcrypt so the application can safely handle passwords beyond bcrypt's native 72-byte input limit without silently truncating them. Verification also supports legacy bcrypt hashes for backward compatibility.
+
+Invalid credentials are returned as clean `401 Unauthorized` responses instead of surfacing password-hashing exceptions as `500 Internal Server Error` responses.
+
+### CORS
+
+The production frontend origin is explicitly configured for credentialed CORS requests. Wildcard origins are not used with credentials enabled.
+
+---
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, TypeScript, Vite |
+| Routing | React Router |
+| UI icons | Lucide React |
+| Backend | Python, FastAPI, Uvicorn |
+| AI orchestration | LangGraph |
+| LLM | Google Gemini (`google-genai`) |
+| Database | PostgreSQL |
+| ORM | SQLAlchemy async |
+| Migrations | Alembic |
+| Authentication | JWT (`python-jose`) |
+| Password hashing | bcrypt + SHA-256 pre-hashing |
+| Payments | Razorpay Test Mode |
+| Email | SMTP |
+| Frontend hosting | Vercel |
+| Backend hosting | Azure App Service |
+
+---
+
+## Project Structure
+
+```text
+Recoup/
+├── app/
+│   ├── agent/
+│   │   ├── graph.py              # LangGraph workflow
+│   │   ├── nodes.py              # Triage, strategy, content, execution, escalation
+│   │   ├── state.py              # Agent state
+│   │   ├── prompts.py             # Gemini prompts
+│   │   ├── gemini_client.py       # Gemini integration
+│   │   ├── razorpay_client.py     # Razorpay Payment Links
+│   │   └── email_sender.py        # SMTP delivery
+│   │
+│   ├── api/routes/
+│   │   ├── auth.py
+│   │   ├── orders.py
+│   │   ├── payments.py
+│   │   ├── recovery_cases.py
+│   │   ├── ai_investigations.py
+│   │   ├── recovery_actions.py
+│   │   ├── recovery_outcomes.py
+│   │   ├── escalations.py
+│   │   ├── agent.py
+│   │   ├── dashboard.py
+│   │   ├── fault_scenarios.py
+│   │   ├── audit_logs.py
+│   │   └── merchants.py
+│   │
+│   ├── core/
+│   │   ├── config.py              # Environment configuration
+│   │   ├── dependencies.py        # Authentication / DB dependencies
+│   │   └── security.py            # JWT + password hashing
+│   │
+│   ├── db/
+│   │   ├── database.py
+│   │   └── models/                # SQLAlchemy models
+│   │
+│   ├── schemas/                   # Pydantic request/response models
+│   ├── services/                  # Business logic
+│   └── main.py                    # FastAPI application entrypoint
+│
+├── frontend/
+│   └── src/
+│       ├── pages/                 # Dashboard and product screens
+│       ├── components/            # Shared UI components
+│       ├── services/api.ts        # API client
+│       └── App.tsx                # Routing and auth guards
+│
+├── alembic/                       # Database migrations
+├── tests/
+├── docs/
+│   └── architecture.png
+├── requirements.txt
+├── .env.example
+└── README.md
+```
+
+---
+
+## API Surface
+
+The FastAPI application exposes REST resources for:
+
+- `/auth` - registration, login, current user
+- `/orders` - merchant orders
+- `/payments` - payment records
+- `/recovery-cases` - recovery case lifecycle
+- `/ai-investigations` - AI investigation records
+- `/recovery-actions` - recovery actions
+- `/recovery-outcomes` - recovery outcomes
+- `/escalations` - human escalation workflow
+- `/dashboard` - recovery KPIs and overview
+- `/fault-scenarios` - Fault Lab scenarios
+- `/audit-logs` - audit history
+- `/merchants` - merchant profile/settings
+- `/{case_id}/agent/run` - execute the recovery agent
+- `/{case_id}/agent/resume` - resume a recovery workflow
+
+FastAPI also provides the generated API documentation at `/docs` when the backend is running.
+
+---
+
+## Local Development
 
 ### Prerequisites
-- Python 3.11+
-- Node 18+
-- PostgreSQL (local or hosted)
 
-### Backend
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL
+- A Gemini API key for live AI reasoning
+- Razorpay test-mode credentials for Payment Links
+- SMTP credentials if real email delivery is required
+
+### 1. Clone the repository
 
 ```bash
-pip install -r requirements.txt --break-system-packages   # or use a venv
-cp .env.example .env                                       # fill in the values below
+git clone https://github.com/Vaidik-Dave23/Recoup.git
+cd Recoup
+```
+
+### 2. Configure the backend
+
+Create a virtual environment and install dependencies:
+
+```bash
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+
+# macOS/Linux
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+Create `.env` from `.env.example` and configure your database and service credentials.
+
+### 3. Run database migrations
+
+```bash
 alembic upgrade head
+```
+
+### 4. Start the backend
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-### Frontend
+The API will be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+Interactive API documentation:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+### 5. Start the frontend
 
 ```bash
 cd frontend
@@ -80,89 +333,127 @@ npm install
 npm run dev
 ```
 
-The Vite dev server proxies `/api/*` to `http://127.0.0.1:8000`, so run the backend first.
-
-### Environment variables (`.env`)
-
-| Variable | Required | Purpose |
-|---|---|---|
-| `DATABASE_URL` | Yes | Postgres connection string |
-| `JWT_SECRET_KEY` | Yes | Auth token signing |
-| `GEMINI_API_KEY` | For real agent reasoning | Without it, triage/strategy fall back to low-confidence defaults and everything escalates |
-| `GEMINI_MODEL` | No | Defaults to `gemini-2.5-flash` |
-| `RECOVERY_CONFIDENCE_THRESHOLD` | No | Default `0.55` |
-| `RECOVERY_MAX_ATTEMPTS` | No | Default `3` |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | For real payment links | Test-mode keys (`rzp_test_...`) — free, no KYC. Get them from the Razorpay Dashboard → Test Mode → API Keys |
-| `RAZORPAY_WEBHOOK_SECRET` | For closing the loop via webhook | Must match the secret set on your webhook in the Razorpay Dashboard |
-| `SMTP_HOST` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` | For real email delivery | Without these, the agent still runs but no email actually sends |
+The Vite development server proxies `/api/*` requests to the local FastAPI server.
 
 ---
 
-## Closing the recovery loop
+## Environment Variables
 
-Creating a payment link only *offers* the customer a way to pay — something has to notice when they actually do.
+| Variable | Required | Description |
+|---|---:|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET_KEY` | Yes | Secret used to sign JWT access tokens |
+| `JWT_ALGORITHM` | No | JWT algorithm, defaults to `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | JWT lifetime, defaults to `60` |
+| `GEMINI_API_KEY` | For AI | Gemini API key |
+| `GEMINI_MODEL` | No | Defaults to `gemini-2.5-flash` |
+| `RECOVERY_CONFIDENCE_THRESHOLD` | No | Confidence gate, defaults to `0.55` |
+| `RECOVERY_MAX_ATTEMPTS` | No | Maximum recovery attempts, defaults to `3` |
+| `RAZORPAY_KEY_ID` | For payments | Razorpay test-mode key ID |
+| `RAZORPAY_KEY_SECRET` | For payments | Razorpay test-mode key secret |
+| `RAZORPAY_WEBHOOK_SECRET` | Optional | Reserved for webhook configuration |
+| `SMTP_HOST` | For email | SMTP server hostname |
+| `SMTP_PORT` | No | Defaults to `587` |
+| `SMTP_USERNAME` | For email | SMTP username |
+| `SMTP_PASSWORD` | For email | SMTP password |
+| `SMTP_FROM_EMAIL` | For email | Sender address |
+| `SMTP_USE_TLS` | No | Defaults to `true` |
+| `FRONTEND_URL` | Optional | Additional allowed frontend origins |
 
-**Option A — real webhook (production path).** Razorpay Dashboard → Accounts & Settings → Webhooks → Add New Webhook:
-- URL: `https://<your-public-host>/webhooks/razorpay`
-- Secret: matches `RAZORPAY_WEBHOOK_SECRET`
-- Event: `payment_link.paid`
-
-Webhooks require a public URL — `localhost` won't work. For local development, tunnel with ngrok, zrok, or similar, and point the webhook at the tunnel's URL.
-
-**Option B — manual sync (local dev, no tunnel needed).**
-```
-POST /recovery-actions/{action_id}/sync-payment
-```
-Polls Razorpay directly for that action's payment link status and records the outcome through the identical code path the webhook uses — so both are provably consistent.
+Never commit real credentials or `.env` files to source control.
 
 ---
 
 ## Testing
 
-Three layers, each for a different purpose:
+The repository includes focused smoke and compatibility tests:
 
-**`tests/razorpay_client_test.py`** — unit tests for the Razorpay wrapper. No DB, no network, no real keys; mocks the SDK to verify error handling (missing keys, missing email, API rejection, network failure) and payload correctness.
 ```bash
+python -m tests.api_smoke
+python -m tests.agent_smoke
+python -m tests.escalation_smoke
+python -m tests.business_state_test
+python -m tests.auth_compat_test
 python -m tests.razorpay_client_test
-```
-
-**`tests/full_e2e_smoke.py`** — full integration smoke test against a running app + Postgres: merchant isolation, dashboard, audit log, Fault Lab, live Gemini reasoning (if `GEMINI_API_KEY` set), live Razorpay payment link creation (if keys set), the escalation branch, live SMTP send + retry loop (if configured), and outcomes. Anything not configured is skipped cleanly rather than failing.
-```bash
 python -m tests.full_e2e_smoke
 ```
 
-**`tests/batch_recovery_report.py`** — not a pass/fail test; a reporting script that seeds a batch of Fault Lab cases (default 50, cycled across all four failure types), runs the real agent on each, and reports escalation rate, channel distribution, and payment links created. Pay a couple of the printed links manually, then re-run with `--sync-only` to see real recovery numbers.
+### Authentication compatibility coverage
+
+`tests/auth_compat_test.py` specifically covers the production authentication fixes, including:
+
+- correct password verification
+- incorrect credentials returning `401`
+- nonexistent users returning `401`
+- passwords longer than bcrypt's native 72-byte limit
+- legacy bcrypt hash verification
+- invalid/corrupt password hashes failing safely
+- production frontend CORS behavior
+
+---
+
+## Deployment
+
+### Frontend
+
+The frontend is a Vite/React application deployed on Vercel.
+
+`frontend/vercel.json` rewrites incoming routes to `index.html`, which allows React Router routes such as `/login`, `/dashboard`, and `/recovery/cases/:id` to survive direct navigation and browser refreshes.
+
+### Backend
+
+The FastAPI application is deployed to Azure App Service using Uvicorn:
+
 ```bash
-python -m tests.batch_recovery_report            # seed + run a batch
-python -m tests.batch_recovery_report --sync-only # close the loop, report real KPIs
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Also present from earlier development: `tests/api_smoke.py`, `tests/agent_smoke.py`, `tests/escalation_smoke.py` — narrower smoke tests covering the base API, a single agent run, and the escalation path respectively.
+Production configuration is supplied through Azure App Service environment variables rather than committing secrets to the repository.
 
 ---
 
-## Demoing without a full merchant integration
+## Current Scope and Limitations
 
-Recoup normally ingests cases the way a real merchant would: Razorpay pushes a `payment.failed` webhook, Recoup auto-creates a `RecoveryCase`. For demo purposes, the **Fault Lab** page seeds the exact same case shape with one click — it's not a mock of the product, it's a mock of *"a payment just failed on a merchant's real Razorpay account."* Everything downstream (triage, strategy, real payment link, real email, real recovery) runs identically either way.
+Recoup is a working prototype focused on demonstrating the complete AI-assisted recovery workflow.
 
----
+Current limitations include:
 
-## Track fit (Razorpay AI Buildathon, Track 3: AI Revenue Recovery)
-
-| Bar | How this meets it |
-|---|---|
-| Detect payment failures & checkout abandonment | `CaseType`: `payment_failed`, `abandoned_checkout`, `overdue_invoice` |
-| Measured money recovered across a batch | `tests/batch_recovery_report.py` + `/dashboard/overview` KPIs |
-| Compliant escalation | Confidence-gated routing with a written handoff summary on escalation |
-| Stopping rules | Hard 3-attempt cap, enforced server-side |
-| Audit trail | Every LangGraph node logs to `AIInvestigation` with confidence scores |
-| Real Razorpay integration | Payment Links API (test mode) + webhook / manual sync to close the loop |
+- Email is the live recovery outreach channel. Other channels are normalized to email rather than pretending to execute an unsupported provider.
+- Razorpay integration is configured for **test mode** and is intended for safe demonstrations rather than real-money recovery.
+- Fault Lab is used to reproduce recovery scenarios without requiring a merchant's production payment webhook integration.
+- Production-grade concerns such as background job infrastructure, distributed task queues, advanced observability, rate limiting, and additional communication providers would be natural next steps for a larger deployment.
 
 ---
 
-## Known limitations
+## Why This Project Is Interesting
 
-- Only the `email` channel is live; SMS and other retry channels are enumerated but not implemented.
-- Razorpay doesn't offer a server-side API to programmatically complete a Payment Link — a batch's recovery rate can only be pushed above 0% by actually paying links through the real checkout UI (with a Razorpay test card), not by scripting it.
-- `RecoveryAction.provider_ref` stores the Razorpay payment link ID as a substring of a free-text field rather than a dedicated column — functional, but worth normalizing if this integration grows further.
-- Real ingestion via a `payment.failed` webhook (the production replacement for Fault Lab) is not yet implemented — Fault Lab is the only way cases get created today.
+Recoup is not just an LLM wrapper. The project treats the AI model as one component inside a constrained software system:
+
+- **Structured state** is passed through a LangGraph workflow.
+- **Business rules are enforced by backend code**, not only by prompts.
+- **Confidence controls whether the AI is allowed to act.**
+- **Retries have a hard limit.**
+- **Actions and AI investigations are persisted for traceability.**
+- **Razorpay Payment Links connect an AI recommendation to an actual payment workflow in test mode.**
+- **Human escalation is a first-class outcome instead of an error state.**
+
+This makes Recoup a practical example of building an agentic system with real integrations, persistence, guardrails, and an operational UI.
+
+---
+
+## Project Status
+
+**Working end-to-end prototype.**
+
+The deployed application currently supports authentication, dashboard operations, recovery case management, AI investigation/agent execution, recovery actions, escalation flows, outcomes, audit history, Fault Lab scenarios, Razorpay test-mode payment links, and optional SMTP delivery.
+
+---
+
+## Author
+
+**Vaidik Dave**  
+AI / GenAI Engineer
+
+- GitHub: https://github.com/Vaidik-Dave23
+- Project: https://github.com/Vaidik-Dave23/Recoup
+- Live App: https://recoup-one.vercel.app
