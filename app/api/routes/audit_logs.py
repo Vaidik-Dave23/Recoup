@@ -202,7 +202,8 @@ async def get_audit_logs(
                     "case_id": str(e.case_id),
                     "priority": e.priority,
                     "reason": e.reason,
-                    "notes": e.notes,
+                    "summary": e.summary,
+                    "notes": e.summary,
                 },
             }
         )
