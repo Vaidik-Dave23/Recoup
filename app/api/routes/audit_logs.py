@@ -33,8 +33,8 @@ DBSession = Annotated[
 async def get_audit_logs(
     current_user: CurrentUser,
     db: DBSession,
-    case_id: UUID | None = Query(None, description="Filter audit logs by specific recovery case ID"),
-    limit: int = Query(100, ge=1, le=500, description="Max audit log entries to return"),
+    case_id: UUID | None = None,
+    limit: int = 100,
 ):
     merchant_id = current_user.merchant_id
 
