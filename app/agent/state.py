@@ -27,3 +27,5 @@ class RecoveryState(TypedDict, total=False):
 
     escalated: bool
     route: str
+    decision_source: str | None
+    policy_reason: str | None

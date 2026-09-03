@@ -260,20 +260,15 @@ async def main() -> None:
             escalate_run = await call(
                 client, "POST", f"/recovery-cases/{escalate_case['id']}/agent/run", 200, headers_a,
             )
-            if escalate_run["escalated"]:
-                escalation = await call(
-                    client, "GET", f"/escalations/case/{escalate_case['id']}", 200, headers_a,
-                )
-                assert len(escalation) >= 1 and escalation[0].get("notes")
-                results.append(
-                    f"PASS  Hard-decline case escalated with a written handoff summary: "
-                    f"\"{escalation[0]['notes'][:100]}...\""
-                )
-            else:
-                results.append(
-                    "NOTE  Hard-decline case did NOT escalate this run (Gemini was more confident "
-                    "than expected) -- not a bug, just non-deterministic. Re-run to check again."
-                )
+            assert escalate_run["escalated"] is True, "Hard-decline case must deterministically escalate via policy"
+            escalation = await call(
+                client, "GET", f"/escalations/case/{escalate_case['id']}", 200, headers_a,
+            )
+            assert len(escalation) >= 1 and escalation[0].get("notes")
+            results.append(
+                f"PASS  Hard-decline case deterministically escalated with a written handoff summary: "
+                f"\"{escalation[0]['notes'][:100]}...\""
+            )
 
             # ---------------------------------------------------------------
             print("\n=== 8. LIVE SMTP send + retry-loop check ===")

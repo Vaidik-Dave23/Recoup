@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent import prompts
 from app.agent.email_sender import send_recovery_email
 from app.agent.gemini_client import GeminiCallError, call_json
+from app.agent.policy import evaluate_recovery_decision, is_hard_decline
 from app.agent.razorpay_client import create_recovery_payment_link
 from app.agent.state import RecoveryState
 from app.core.config import settings
@@ -100,10 +101,17 @@ class RecoveryAgentNodes:
             }
             confidence = 0.0
 
+        # Apply deterministic backend safety policy (single source of truth)
+        policy_decision = evaluate_recovery_decision(
+            failure_reason=state.get("failure_reason"),
+            raw_action=result.get("action_type"),
+            raw_channel=result.get("channel"),
+            confidence=confidence,
+            confidence_threshold=settings.recovery_confidence_threshold,
+        )
+
         # Hard guarantee, not just a prompt instruction: only "email" has a
         # live sending provider wired up (see execute node / email_sender.py).
-        # If the model ever ignores the prompt and picks sms/razorpay_retry,
-        # normalize it here rather than silently burning a no-op attempt.
         if result.get("action_type") != "email" or result.get("channel") != "email":
             result["_channel_normalized_from"] = {
                 "action_type": result.get("action_type"),
@@ -111,6 +119,12 @@ class RecoveryAgentNodes:
             }
             result["action_type"] = "email"
             result["channel"] = "email"
+
+        # Record policy audit information in strategy result
+        result["decision_source"] = policy_decision.decision_source
+        if policy_decision.policy_reason:
+            result["policy_reason"] = policy_decision.policy_reason
+        result["effective_action"] = policy_decision.effective_action
 
         await self._log(
             state["case_id"],
@@ -121,13 +135,17 @@ class RecoveryAgentNodes:
         )
         return {
             "strategy": result,
-            "route": (
-                "generate_content"
-                if confidence >= settings.recovery_confidence_threshold
-                else "escalate"
-            ),
+            "route": policy_decision.route,
+            "decision_source": policy_decision.decision_source,
+            "policy_reason": policy_decision.policy_reason,
         }
+
     async def generate_content(self, state: RecoveryState) -> dict[str, Any]:
+        if is_hard_decline(state.get("failure_reason")):
+            raise ValueError(
+                f"Policy violation: Automated recovery content and payment links are forbidden for hard decline cases ({state.get('failure_reason')})"
+            )
+
         strategy = state.get("strategy") or {}
         # Create the payment link first so we can supply it directly to the prompt
         link_result = create_recovery_payment_link(
@@ -212,6 +230,11 @@ class RecoveryAgentNodes:
         return row.id if row else None
 
     async def execute(self, state: RecoveryState) -> dict[str, Any]:
+        if is_hard_decline(state.get("failure_reason")):
+            raise ValueError(
+                f"Policy violation: Automated recovery execution is forbidden for hard decline cases ({state.get('failure_reason')})"
+            )
+
         action_id = state.get("action_id")
         if not action_id:
             raise ValueError("Recovery action is missing")
@@ -255,7 +278,8 @@ class RecoveryAgentNodes:
         )
         return {"send_result": send_result}
 
-    async def escalate(self, state: RecoveryState, trigger: str) -> dict[str, Any]:
+    async def escalate(self, state: RecoveryState, trigger: str = "low_confidence") -> dict[str, Any]:
+        effective_trigger = state.get("policy_reason") or trigger or "low_confidence"
         prompt = prompts.ESCALATE_USER.format(
             case_type=state["case_type"],
             amount_at_risk=state["amount_at_risk"],
@@ -263,28 +287,33 @@ class RecoveryAgentNodes:
             attempt_count=state.get("attempt_count", 0),
             triage_json=json.dumps(state.get("triage") or {}),
             strategy_json=json.dumps(state.get("strategy") or {}),
-            trigger=trigger,
+            trigger=effective_trigger,
         )
         try:
             result = await call_json(prompts.ESCALATE_SYSTEM, prompt)
         except GeminiCallError as exc:
             result = {
-                "reason": trigger,
+                "reason": effective_trigger,
                 "priority": "medium",
                 "summary": f"Gemini handoff generation failed: {exc}",
             }
-        await self._log(state["case_id"], InvestigationNode.ESCALATE, {"trigger": trigger}, result)
+        await self._log(state["case_id"], InvestigationNode.ESCALATE, {"trigger": effective_trigger}, result)
         escalation = await create_escalation(
             self.db,
             self.merchant_id,
             EscalationCreate(
                 case_id=UUID(state["case_id"]),
-                reason=result.get("reason", trigger),
+                reason=result.get("reason", effective_trigger),
                 priority=result.get("priority", "medium"),
                 notes=result.get("summary"),
             ),
         )
-        return {"escalated": True, "escalation_id": str(escalation.id)}
+        return {
+            "escalated": True,
+            "escalation_id": str(escalation.id),
+            "decision_source": state.get("decision_source", "policy" if is_hard_decline(state.get("failure_reason")) else "llm"),
+            "policy_reason": state.get("policy_reason"),
+        }
 
 
 async def resolve_customer_contact(

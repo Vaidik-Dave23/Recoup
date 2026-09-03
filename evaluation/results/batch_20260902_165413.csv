@@ -1,0 +1,6 @@
+case_id,scenario,amount_at_risk,ground_truth_action,model_action,model_confidence,escalated,decision_correct,simulated_recovered,simulated_amount_recovered,error,api_error
+BATCH-0001,hard_decline,10050,escalate,escalate,0.1,True,True,False,0,,False
+BATCH-0002,soft_decline,13236,email,email,0.9,False,True,True,13236,,False
+BATCH-0003,abandoned_checkout,2168,email,email,0.8,False,True,False,0,,False
+BATCH-0004,overdue_invoice,38211,email,email,0.8,False,True,False,0,,False
+BATCH-0005,hard_decline,12539,escalate,escalate,0.1,True,True,False,0,,False

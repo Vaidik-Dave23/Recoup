@@ -1,0 +1,200 @@
+{
+  "summary": {
+    "benchmark": "Recoup synthetic batch recovery benchmark",
+    "generated_at": "2026-09-02T11:24:13.806708+00:00",
+    "seed": 20260902,
+    "cases": 5,
+    "valid_evaluations": 5,
+    "api_errors": 0,
+    "valid_evaluation_rate": 1.0,
+    "confidence_threshold": 0.55,
+    "decision_accuracy": 1.0,
+    "escalation_rate": 0.4,
+    "error_rate": 0.0,
+    "simulated_amount_at_risk_inr": 76204,
+    "simulated_amount_recovered_inr": 13236,
+    "simulated_recovery_rate_by_amount": 0.1737,
+    "scenario_breakdown": {
+      "hard_decline": {
+        "cases": 2,
+        "valid_evaluations": 2,
+        "api_errors": 0,
+        "decision_accuracy": 1.0,
+        "escalation_rate": 1.0,
+        "simulated_amount_at_risk_inr": 22589,
+        "simulated_amount_recovered_inr": 0,
+        "simulated_recovery_rate_by_amount": 0.0
+      },
+      "soft_decline": {
+        "cases": 1,
+        "valid_evaluations": 1,
+        "api_errors": 0,
+        "decision_accuracy": 1.0,
+        "escalation_rate": 0.0,
+        "simulated_amount_at_risk_inr": 13236,
+        "simulated_amount_recovered_inr": 13236,
+        "simulated_recovery_rate_by_amount": 1.0
+      },
+      "abandoned_checkout": {
+        "cases": 1,
+        "valid_evaluations": 1,
+        "api_errors": 0,
+        "decision_accuracy": 1.0,
+        "escalation_rate": 0.0,
+        "simulated_amount_at_risk_inr": 2168,
+        "simulated_amount_recovered_inr": 0,
+        "simulated_recovery_rate_by_amount": 0.0
+      },
+      "overdue_invoice": {
+        "cases": 1,
+        "valid_evaluations": 1,
+        "api_errors": 0,
+        "decision_accuracy": 1.0,
+        "escalation_rate": 0.0,
+        "simulated_amount_at_risk_inr": 38211,
+        "simulated_amount_recovered_inr": 0,
+        "simulated_recovery_rate_by_amount": 0.0
+      }
+    },
+    "important_note": "Recovered-money figures are synthetic benchmark outcomes, not real customer payments. Decision accuracy, escalation rate, and recovery metrics are calculated only from valid model evaluations. Gemini/API failures are reported separately as api_errors and are not counted as model decisions."
+  },
+  "cases": [
+    {
+      "case_id": "BATCH-0001",
+      "scenario": "hard_decline",
+      "case_type": "payment_failed",
+      "failure_reason": "stolen_card_decline",
+      "amount_at_risk": 10050,
+      "currency": "INR",
+      "payment_method": "card",
+      "customer_name": "Customer 1",
+      "customer_email": "batch-0001@example.com",
+      "attempt_count": 0,
+      "would_recover_after_email": false
+    },
+    {
+      "case_id": "BATCH-0002",
+      "scenario": "soft_decline",
+      "case_type": "payment_failed",
+      "failure_reason": "insufficient_funds",
+      "amount_at_risk": 13236,
+      "currency": "INR",
+      "payment_method": "card",
+      "customer_name": "Customer 2",
+      "customer_email": "batch-0002@example.com",
+      "attempt_count": 0,
+      "would_recover_after_email": true
+    },
+    {
+      "case_id": "BATCH-0003",
+      "scenario": "abandoned_checkout",
+      "case_type": "abandoned_checkout",
+      "failure_reason": "checkout_abandoned",
+      "amount_at_risk": 2168,
+      "currency": "INR",
+      "payment_method": "upi",
+      "customer_name": "Customer 3",
+      "customer_email": "batch-0003@example.com",
+      "attempt_count": 0,
+      "would_recover_after_email": false
+    },
+    {
+      "case_id": "BATCH-0004",
+      "scenario": "overdue_invoice",
+      "case_type": "overdue_invoice",
+      "failure_reason": "invoice_unpaid_30_days",
+      "amount_at_risk": 38211,
+      "currency": "INR",
+      "payment_method": "bank_transfer",
+      "customer_name": "Customer 4",
+      "customer_email": "batch-0004@example.com",
+      "attempt_count": 0,
+      "would_recover_after_email": false
+    },
+    {
+      "case_id": "BATCH-0005",
+      "scenario": "hard_decline",
+      "case_type": "payment_failed",
+      "failure_reason": "stolen_card_decline",
+      "amount_at_risk": 12539,
+      "currency": "INR",
+      "payment_method": "card",
+      "customer_name": "Customer 5",
+      "customer_email": "batch-0005@example.com",
+      "attempt_count": 0,
+      "would_recover_after_email": false
+    }
+  ],
+  "results": [
+    {
+      "case_id": "BATCH-0001",
+      "scenario": "hard_decline",
+      "amount_at_risk": 10050,
+      "ground_truth_action": "escalate",
+      "model_action": "escalate",
+      "model_confidence": 0.1,
+      "escalated": true,
+      "decision_correct": true,
+      "simulated_recovered": false,
+      "simulated_amount_recovered": 0,
+      "error": null,
+      "api_error": false
+    },
+    {
+      "case_id": "BATCH-0002",
+      "scenario": "soft_decline",
+      "amount_at_risk": 13236,
+      "ground_truth_action": "email",
+      "model_action": "email",
+      "model_confidence": 0.9,
+      "escalated": false,
+      "decision_correct": true,
+      "simulated_recovered": true,
+      "simulated_amount_recovered": 13236,
+      "error": null,
+      "api_error": false
+    },
+    {
+      "case_id": "BATCH-0003",
+      "scenario": "abandoned_checkout",
+      "amount_at_risk": 2168,
+      "ground_truth_action": "email",
+      "model_action": "email",
+      "model_confidence": 0.8,
+      "escalated": false,
+      "decision_correct": true,
+      "simulated_recovered": false,
+      "simulated_amount_recovered": 0,
+      "error": null,
+      "api_error": false
+    },
+    {
+      "case_id": "BATCH-0004",
+      "scenario": "overdue_invoice",
+      "amount_at_risk": 38211,
+      "ground_truth_action": "email",
+      "model_action": "email",
+      "model_confidence": 0.8,
+      "escalated": false,
+      "decision_correct": true,
+      "simulated_recovered": false,
+      "simulated_amount_recovered": 0,
+      "error": null,
+      "api_error": false
+    },
+    {
+      "case_id": "BATCH-0005",
+      "scenario": "hard_decline",
+      "amount_at_risk": 12539,
+      "ground_truth_action": "escalate",
+      "model_action": "escalate",
+      "model_confidence": 0.1,
+      "escalated": true,
+      "decision_correct": true,
+      "simulated_recovered": false,
+      "simulated_amount_recovered": 0,
+      "error": null,
+      "api_error": false
+    }
+  ]
+}

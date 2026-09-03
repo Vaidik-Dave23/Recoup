@@ -13,3 +13,5 @@ class AgentRunResponse(BaseModel):
     send_result: dict[str, Any] | None = None
     escalated: bool = False
     escalation_id: str | None = None
+    decision_source: str | None = None
+    policy_reason: str | None = None
