@@ -248,6 +248,17 @@ class RecoveryAgentNodes:
         if action is None:
             raise ValueError("Recovery action disappeared before execution")
 
+        # Idempotency guard: Prevent double execution if action was already sent
+        if action.status in (ActionStatus.SENT, ActionStatus.SENT.value, "sent"):
+            return {
+                "send_result": {
+                    "success": True,
+                    "provider_ref": action.provider_ref,
+                    "idempotent": True,
+                    "message": "Action already sent; duplicate execution blocked by idempotency guard.",
+                }
+            }
+
         if state.get("action_channel") == "email" and state.get("customer_email"):
             sent = send_recovery_email(
                 state["customer_email"],
@@ -319,12 +330,27 @@ class RecoveryAgentNodes:
 async def resolve_customer_contact(
     db: AsyncSession, merchant_id: UUID, payment_id: str | None
 ) -> tuple[str | None, str | None]:
-    if payment_id is None:
-        return None, None
-    result = await db.execute(
-        select(Order.customer_email)
-        .join(Payment, Payment.order_id == Order.id)
-        .where(Payment.id == UUID(payment_id), Payment.merchant_id == merchant_id)
-    )
-    row = result.first()
-    return (row[0] if row else None), None
+    email = None
+    if payment_id is not None:
+        result = await db.execute(
+            select(Order.customer_email)
+            .join(Payment, Payment.order_id == Order.id)
+            .where(Payment.id == UUID(payment_id), Payment.merchant_id == merchant_id)
+        )
+        row = result.first()
+        if row and row[0]:
+            email = row[0]
+
+    # If email is missing or an unrouteable dummy @example.com, route to merchant user's real email for testing
+    if not email or email.endswith("@example.com"):
+        from app.db.models.merchant_user import MerchantUser
+        user_res = await db.execute(
+            select(MerchantUser.email)
+            .where(MerchantUser.merchant_id == merchant_id)
+            .limit(1)
+        )
+        user_row = user_res.first()
+        if user_row and user_row[0] and not user_row[0].endswith("@example.com"):
+            email = user_row[0]
+
+    return email, None

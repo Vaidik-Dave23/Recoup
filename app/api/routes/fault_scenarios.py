@@ -95,7 +95,7 @@ async def execute_scenario(
     suffix = f"{random.randint(100, 999)}"
     order_custom_id = f"ORDER_FAULT_{scenario_id[:4].upper()}_{suffix}"
     txn_id = f"pay_FAULT_{scenario_id[:4].upper()}_{suffix}"
-    customer_email = f"customer_{suffix}@example.com"
+    customer_email = current_user.email if current_user.email else f"customer_{suffix}@example.com"
 
     # 1. Create order
     order_in = OrderCreate(

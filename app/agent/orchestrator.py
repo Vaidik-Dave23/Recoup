@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.graph import build_first_pass_graph, build_retry_graph
 from app.agent.nodes import RecoveryAgentNodes, resolve_customer_contact
 from app.agent.state import RecoveryState
+from app.core.config import settings
 from app.db.models.enums import RecoveryCaseStatus, RecoveryStage
 from app.db.models.escalation import Escalation
 from app.db.models.recovery_case import RecoveryCase
@@ -41,6 +42,15 @@ async def run_case(db: AsyncSession, merchant_id: UUID, case_id: UUID) -> Recove
     case = await _load_case(db, merchant_id, case_id)
     if case.status != RecoveryCaseStatus.IN_PROGRESS:
         raise ValueError("Cannot run recovery agent on a resolved case")
+    if case.attempt_count >= settings.recovery_max_attempts:
+        case.status = RecoveryCaseStatus.ESCALATED
+        case.stage = RecoveryStage.ESCALATED
+        state = await _initial_state(db, merchant_id, case)
+        result = await RecoveryAgentNodes(db, merchant_id).escalate(
+            state, trigger="attempts_exhausted"
+        )
+        await db.commit()
+        return {**state, **result}
     final_state = await build_first_pass_graph(db, merchant_id).ainvoke(
         await _initial_state(db, merchant_id, case)
     )
