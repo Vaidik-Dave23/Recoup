@@ -101,7 +101,7 @@ export const FaultLab: React.FC = () => {
                   {sc.case_type}
                 </span>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  INR {sc.amount}
+                  INR {(sc.amount / 100).toLocaleString('en-IN', { minimumFractionDigits: sc.amount % 100 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
                 </span>
               </div>
               <h3 style={{ fontSize: '15px', fontWeight: 600 }}>{sc.name}</h3>
