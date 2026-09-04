@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -16,7 +16,7 @@ import {
 import { api } from '../services/api';
 
 interface AppShellProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   user: any;
   onLogout: () => void;
 }
@@ -242,7 +242,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children, user, onLogout }) 
 
         {/* Page Content Panel */}
         <main style={{ flex: 1, overflowY: 'auto', padding: '24px', position: 'relative' }}>
-          {children}
+          {children || <Outlet />}
         </main>
       </div>
     </div>

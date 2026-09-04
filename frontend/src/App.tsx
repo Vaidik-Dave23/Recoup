@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { api } from './services/api';
 import { ToastProvider, useToast } from './components/Toast';
@@ -19,29 +19,54 @@ import { Audit } from './pages/Audit';
 import { FaultLab } from './pages/FaultLab';
 import { Settings } from './pages/Settings';
 
+interface LayoutProps {
+  user: any;
+  onLogout: () => void;
+}
+
+const AuthenticatedLayout: React.FC<LayoutProps> = ({ user, onLogout }) => {
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  return (
+    <AppShell user={user} onLogout={onLogout}>
+      <Outlet />
+    </AppShell>
+  );
+};
+
+const GuestLayout: React.FC<{ user: any }> = ({ user }) => {
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <Outlet />;
+};
+
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const { showToast } = useToast();
 
-  const checkAuth = async () => {
-    const token = localStorage.getItem('recoup_token');
-    if (!token) {
-      setCheckingAuth(false);
-      return;
-    }
-    try {
-      const profile = await api.getMe();
-      setUser(profile);
-    } catch (err) {
-      api.logout();
-      setUser(null);
-    } finally {
-      setCheckingAuth(false);
-    }
-  };
-
   useEffect(() => {
+    let isMounted = true;
+
+    const checkAuth = async () => {
+      const token = localStorage.getItem('recoup_token');
+      if (!token) {
+        if (isMounted) setCheckingAuth(false);
+        return;
+      }
+      try {
+        const profile = await api.getMe();
+        if (isMounted) setUser(profile);
+      } catch {
+        api.logout();
+        if (isMounted) setUser(null);
+      } finally {
+        if (isMounted) setCheckingAuth(false);
+      }
+    };
+
     checkAuth();
 
     const handleAuthExpired = () => {
@@ -51,9 +76,10 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('auth_expired', handleAuthExpired);
     return () => {
+      isMounted = false;
       window.removeEventListener('auth_expired', handleAuthExpired);
     };
-  }, [showToast]);
+  }, []);
 
   if (checkingAuth) {
     return (
@@ -63,42 +89,29 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // Authentication Route Guards
-  const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
-    if (!user) {
-      return <Navigate to="/login" replace />;
-    }
-    return <AppShell user={user} onLogout={() => setUser(null)}>{children}</AppShell>;
-  };
-
-  const RedirectIfAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
-    if (user) {
-      return <Navigate to="/dashboard" replace />;
-    }
-    return children;
-  };
-
   return (
     <Routes>
-      {/* Public Pages */}
-      <Route path="/" element={<RedirectIfAuth><Home /></RedirectIfAuth>} />
-      
-      {/* Auth Pages */}
-      <Route path="/login" element={<RedirectIfAuth><Login onLoginSuccess={setUser} /></RedirectIfAuth>} />
-      <Route path="/register" element={<RedirectIfAuth><Register onRegisterSuccess={setUser} /></RedirectIfAuth>} />
+      {/* Public / Guest Routes */}
+      <Route element={<GuestLayout user={user} />}>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login onLoginSuccess={setUser} />} />
+        <Route path="/register" element={<Register onRegisterSuccess={setUser} />} />
+      </Route>
 
       {/* Authenticated Dashboard Pages */}
-      <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-      <Route path="/recovery/at-risk" element={<RequireAuth><AtRiskQueue /></RequireAuth>} />
-      <Route path="/recovery/cases/:id" element={<RequireAuth><CaseDetail /></RequireAuth>} />
-      <Route path="/recovery/cases/:id/trace" element={<RequireAuth><AgentTrace /></RequireAuth>} />
-      <Route path="/recovery/cases/:id/actions" element={<RequireAuth><RecoveryActions /></RequireAuth>} />
-      <Route path="/recovery/actions" element={<RequireAuth><RecoveryActions /></RequireAuth>} />
-      <Route path="/recovery/outcomes" element={<RequireAuth><Outcomes /></RequireAuth>} />
-      <Route path="/recovery/escalations" element={<RequireAuth><Escalations /></RequireAuth>} />
-      <Route path="/audit" element={<RequireAuth><Audit /></RequireAuth>} />
-      <Route path="/fault-lab" element={<RequireAuth><FaultLab /></RequireAuth>} />
-      <Route path="/settings" element={<RequireAuth><Settings user={user} onUserUpdate={setUser} /></RequireAuth>} />
+      <Route element={<AuthenticatedLayout user={user} onLogout={() => setUser(null)} />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/recovery/at-risk" element={<AtRiskQueue />} />
+        <Route path="/recovery/cases/:id" element={<CaseDetail />} />
+        <Route path="/recovery/cases/:id/trace" element={<AgentTrace />} />
+        <Route path="/recovery/cases/:id/actions" element={<RecoveryActions />} />
+        <Route path="/recovery/actions" element={<RecoveryActions />} />
+        <Route path="/recovery/outcomes" element={<Outcomes />} />
+        <Route path="/recovery/escalations" element={<Escalations />} />
+        <Route path="/audit" element={<Audit />} />
+        <Route path="/fault-lab" element={<FaultLab />} />
+        <Route path="/settings" element={<Settings user={user} onUserUpdate={setUser} />} />
+      </Route>
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to={user ? "/dashboard" : "/"} replace />} />
@@ -115,3 +128,4 @@ export const App: React.FC = () => {
     </BrowserRouter>
   );
 };
+

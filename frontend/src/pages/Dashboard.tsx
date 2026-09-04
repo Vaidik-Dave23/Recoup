@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, ArrowRight, TrendingUp, AlertTriangle, ShieldCheck, RefreshCw, Layers } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/Toast';
@@ -277,7 +277,7 @@ export const Dashboard: React.FC = () => {
                         Executed {act.action_type.toUpperCase()} via {act.channel}
                       </span>
                       <span style={{ color: 'var(--text-secondary)' }}>
-                        Case: <a href={`/recovery/cases/${act.case_id}`} style={{ fontFamily: 'var(--font-mono)' }}>{act.case_id.substring(0, 8)}</a>
+                        Case: <Link to={`/recovery/cases/${act.case_id}`} style={{ fontFamily: 'var(--font-mono)' }}>{act.case_id.substring(0, 8)}</Link>
                       </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
