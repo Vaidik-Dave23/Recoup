@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, AlertTriangle, Play } from 'lucide-react';
+import { formatCurrency } from '../lib/currency';
 import { api } from '../services/api';
 import { useToast } from '../components/Toast';
 
@@ -101,7 +102,7 @@ export const FaultLab: React.FC = () => {
                   {sc.case_type}
                 </span>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  INR {(sc.amount / 100).toLocaleString('en-IN', { minimumFractionDigits: sc.amount % 100 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
+                  {formatCurrency(sc.amount, sc.currency)}
                 </span>
               </div>
               <h3 style={{ fontSize: '15px', fontWeight: 600 }}>{sc.name}</h3>

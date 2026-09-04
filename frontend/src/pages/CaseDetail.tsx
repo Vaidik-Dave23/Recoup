@@ -33,7 +33,7 @@ export const CaseDetail: React.FC = () => {
       const caseVal = c as any;
       setCaseData(caseVal);
       if (caseVal && typeof caseVal.amount_at_risk === 'number') {
-        setOutcomeAmount(caseVal.amount_at_risk);
+        setOutcomeAmount(caseVal.amount_at_risk / 100);
       }
       setInvestigations(invs);
       setActions(acts);
@@ -54,7 +54,7 @@ export const CaseDetail: React.FC = () => {
         case_id: id,
         action_id: latestAction.id,
         recovered: isRecoveredVal,
-        amount_recovered: isRecoveredVal ? outcomeAmount : 0,
+        amount_recovered: isRecoveredVal ? Math.round(Number(outcomeAmount) * 100) : 0,
         notes: outcomeNotes || (isRecoveredVal ? 'Manual recovery recorded' : 'Manual failure recorded'),
       });
       showToast('Outcome recorded successfully!', 'success');
@@ -295,10 +295,11 @@ export const CaseDetail: React.FC = () => {
                       <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Recovered Amount ({caseData.currency})</label>
                       <input
                         type="number"
+                        step="0.01"
                         className="form-input"
                         required
                         value={outcomeAmount}
-                        onChange={(e) => setOutcomeAmount(parseInt(e.target.value) || 0)}
+                        onChange={(e) => setOutcomeAmount(parseFloat(e.target.value) || 0)}
                         style={{ fontSize: '13px', padding: '8px' }}
                       />
                     </div>

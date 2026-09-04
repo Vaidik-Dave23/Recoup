@@ -233,7 +233,7 @@ export const Home: React.FC = () => {
             <div style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mean Recovery Initiation</div>
           </div>
           <div>
-            <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>INR 4,999</div>
+            <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>INR 49.99</div>
             <div style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Real-time Case Testing</div>
           </div>
         </div>

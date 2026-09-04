@@ -55,10 +55,11 @@ class RecoveryAgentNodes:
         )
 
     async def triage(self, state: RecoveryState) -> dict[str, Any]:
+        amount_fmt = f"{state['amount_at_risk'] / 100:.2f}"
         prompt = prompts.TRIAGE_USER.format(
             case_type=state["case_type"],
             failure_reason=state["failure_reason"],
-            amount_at_risk=state["amount_at_risk"],
+            amount_at_risk=amount_fmt,
             currency=state["currency"],
             attempt_count=state.get("attempt_count", 0),
         )
@@ -80,10 +81,11 @@ class RecoveryAgentNodes:
         return {"triage": result}
 
     async def strategize(self, state: RecoveryState) -> dict[str, Any]:
+        amount_fmt = f"{state['amount_at_risk'] / 100:.2f}"
         prompt = prompts.STRATEGIZE_USER.format(
             triage_json=json.dumps(state.get("triage") or {}),
             case_type=state["case_type"],
-            amount_at_risk=state["amount_at_risk"],
+            amount_at_risk=amount_fmt,
             currency=state["currency"],
             attempt_number=state.get("attempt_count", 0) + 1,
         )
@@ -158,13 +160,14 @@ class RecoveryAgentNodes:
         )
 
         payment_link = link_result.short_url if link_result.success else "N/A"
+        amount_fmt = f"{state['amount_at_risk'] / 100:.2f}"
 
         prompt = prompts.CONTENT_USER.format(
             channel=strategy.get("channel", "email"),
             tone=strategy.get("tone", "informational"),
             customer_name=state.get("customer_name") or "there",
             case_type=state["case_type"],
-            amount_at_risk=state["amount_at_risk"],
+            amount_at_risk=amount_fmt,
             currency=state["currency"],
             payment_link=payment_link,
             triage_summary=(state.get("triage") or {}).get("summary", ""),
@@ -291,9 +294,10 @@ class RecoveryAgentNodes:
 
     async def escalate(self, state: RecoveryState, trigger: str = "low_confidence") -> dict[str, Any]:
         effective_trigger = state.get("policy_reason") or trigger or "low_confidence"
+        amount_fmt = f"{state['amount_at_risk'] / 100:.2f}"
         prompt = prompts.ESCALATE_USER.format(
             case_type=state["case_type"],
-            amount_at_risk=state["amount_at_risk"],
+            amount_at_risk=amount_fmt,
             currency=state["currency"],
             attempt_count=state.get("attempt_count", 0),
             triage_json=json.dumps(state.get("triage") or {}),

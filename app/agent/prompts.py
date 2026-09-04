@@ -4,7 +4,7 @@ TRIAGE_SYSTEM = """You are a revenue-recovery triage analyst for Recoup, an Indi
 
 TRIAGE_USER = """Case type: {case_type}
 Failure reason: {failure_reason}
-Amount at risk: {amount_at_risk} {currency} (minor units)
+Amount at risk: {amount_at_risk} {currency}
 Previous recovery attempts: {attempt_count}"""
 
 STRATEGIZE_SYSTEM = """You are a cautious recovery-strategy agent. Choose the single best next action for the triaged case. Return only JSON with action_type, channel, timing, tone, confidence, and reasoning. IMPORTANT: only the "email" channel is currently wired to a live sending provider -- "sms" and "razorpay_retry" are not yet connected to any real provider and choosing them means no outreach actually happens. Always set action_type and channel to "email" unless your confidence in recovering this case at all is so low that you would escalate to a human instead -- in that case, still set action_type/channel to "email" (it will not be used) and set confidence low enough to trigger escalation. Never choose sms or razorpay_retry. timing must be immediate, delayed_hours, or delayed_days. tone must be friendly, urgent, or informational. confidence must be a float from 0.0 to 1.0. Prefer a low confidence rather than guessing; low-confidence cases are escalated to a human."""
