@@ -90,10 +90,11 @@ async def get_recovery_cases(
     )
 
     cases = list(result.scalars().all())
-    import asyncio
-    active_cases = [c for c in cases if c.status == "in_progress"]
-    if active_cases:
-        await asyncio.gather(*(sync_case_payment_status(db, merchant_id, c) for c in active_cases))
+    for c in cases:
+        if c.status in (RecoveryCaseStatus.IN_PROGRESS, "in_progress"):
+            sync_res = await sync_case_payment_status(db, merchant_id, c)
+            if sync_res.get("synced"):
+                await db.refresh(c)
     return cases
 
 
@@ -110,8 +111,10 @@ async def get_recovery_case(
     )
 
     case = result.scalar_one_or_none()
-    if case is not None:
-        await sync_case_payment_status(db, merchant_id, case)
+    if case is not None and case.status in (RecoveryCaseStatus.IN_PROGRESS, "in_progress"):
+        sync_res = await sync_case_payment_status(db, merchant_id, case)
+        if sync_res.get("synced"):
+            await db.refresh(case)
     return case
 
 
@@ -163,7 +166,7 @@ async def sync_case_payment_status(db: AsyncSession, merchant_id: UUID, case: Re
         
         try:
             parts = action.provider_ref.split("rzp_link:")
-            payment_link_id = parts[1].strip()
+            payment_link_id = parts[1].strip().split()[0]
         except Exception:
             continue
         
@@ -172,7 +175,7 @@ async def sync_case_payment_status(db: AsyncSession, merchant_id: UUID, case: Re
             link_status = status_data.get("status")
             amount_paid = status_data.get("amount_paid", 0)
             paid_at = status_data.get("paid_at")
-        except Exception as exc:
+        except Exception:
             continue
         
         is_paid = link_status == "paid" or (amount_paid and amount_paid > 0) or paid_at is not None

@@ -62,23 +62,16 @@ export const CaseDetail: React.FC = () => {
     fetchAllDetails();
   }, [id]);
 
-  // Live Auto-Polling for Razorpay Payment Link completion
+  // Live Auto-Polling for Background Agent & Razorpay Payment Link completion
   useEffect(() => {
     if (!caseData || caseData.status !== 'in_progress') return;
 
-    // Check if there's an active sent action with a payment link
-    const hasSentLink = actions.some(
-      (a) => (a.status === 'sent' || a.status === 'delivered') && a.provider_ref?.includes('rzp_link:')
-    );
-
-    if (!hasSentLink) return;
-
     const interval = setInterval(() => {
       fetchAllDetails(true);
-    }, 2500);
+    }, 1800);
 
     return () => clearInterval(interval);
-  }, [caseData?.status, actions]);
+  }, [caseData?.status]);
 
   const handleManualVerify = async () => {
     if (!id) return;
@@ -184,7 +177,7 @@ export const CaseDetail: React.FC = () => {
   const latestInv = investigations[investigations.length - 1];
 
   const paymentLinkUrl = contentInv?.response_payload?.payment_link_url || 
-    (actions[0]?.provider_ref?.includes('rzp_link:') ? `https://rzp.io/i/${actions[0]?.provider_ref.split('rzp_link:')[1].trim()}` : null);
+    (actions[0]?.provider_ref?.includes('rzp_link:') ? `https://rzp.io/i/${actions[0]?.provider_ref.split('rzp_link:')[1].trim().split(' ')[0]}` : null);
 
   const isEscalated = caseData.status === 'escalated' || Boolean(escalateInv);
   const isRecovered = caseData.status === 'recovered';
@@ -318,12 +311,16 @@ export const CaseDetail: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', fontSize: '12px' }}>
             {triageInv ? (
               <CheckCircle2 size={15} color="var(--color-success)" style={{ flexShrink: 0 }} />
-            ) : (
+            ) : !isEscalated ? (
               <Loader2 size={15} className="animate-spin" color="var(--color-info)" style={{ flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: '15px', height: '15px', borderRadius: '50%', border: '2px dashed var(--text-muted)', flexShrink: 0 }} />
             )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 600 }}>Gemini Triage</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{triageInv?.response_payload?.category || 'Diagnosed'}</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                {triageInv?.response_payload?.category || (caseData.status === 'in_progress' ? 'Diagnosing...' : 'Pending')}
+              </span>
             </div>
           </div>
 
@@ -331,12 +328,16 @@ export const CaseDetail: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', fontSize: '12px' }}>
             {strategyInv ? (
               <CheckCircle2 size={15} color="var(--color-success)" style={{ flexShrink: 0 }} />
-            ) : (
+            ) : triageInv && !isEscalated ? (
               <Loader2 size={15} className="animate-spin" color="var(--color-info)" style={{ flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: '15px', height: '15px', borderRadius: '50%', border: '2px dashed var(--text-muted)', flexShrink: 0 }} />
             )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 600 }}>Strategy Engine</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{strategyInv?.response_payload?.action_type || 'Email Dunning'}</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                {strategyInv?.response_payload?.action_type || (triageInv && caseData.status === 'in_progress' ? 'Strategizing...' : 'Pending')}
+              </span>
             </div>
           </div>
 
@@ -346,13 +347,15 @@ export const CaseDetail: React.FC = () => {
               <ShieldCheck size={15} color="var(--color-error)" style={{ flexShrink: 0 }} />
             ) : strategyInv ? (
               <ShieldCheck size={15} color="var(--color-success)" style={{ flexShrink: 0 }} />
-            ) : (
+            ) : triageInv ? (
               <Loader2 size={15} className="animate-spin" color="var(--color-info)" style={{ flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: '15px', height: '15px', borderRadius: '50%', border: '2px dashed var(--text-muted)', flexShrink: 0 }} />
             )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 600 }}>Confidence Gate</span>
               <span style={{ fontSize: '10px', color: isEscalated ? 'var(--color-error)' : 'var(--text-muted)' }}>
-                {isEscalated ? 'Policy Escalation' : `${strategyConfidence || 95}% Passed`}
+                {isEscalated ? 'Policy Escalation' : strategyInv ? `${strategyConfidence || 95}% Passed` : 'Pending'}
               </span>
             </div>
           </div>
@@ -363,12 +366,16 @@ export const CaseDetail: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', fontSize: '12px' }}>
                 {contentInv ? (
                   <CheckCircle2 size={15} color="var(--color-success)" style={{ flexShrink: 0 }} />
-                ) : (
+                ) : strategyInv ? (
                   <Loader2 size={15} className="animate-spin" color="var(--color-info)" style={{ flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: '15px', height: '15px', borderRadius: '50%', border: '2px dashed var(--text-muted)', flexShrink: 0 }} />
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontWeight: 600 }}>Content Drafted</span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>AI Personalized</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    {contentInv ? 'AI Personalized' : strategyInv ? 'Drafting...' : 'Pending'}
+                  </span>
                 </div>
               </div>
 
@@ -376,12 +383,16 @@ export const CaseDetail: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', fontSize: '12px' }}>
                 {paymentLinkUrl ? (
                   <CheckCircle2 size={15} color="var(--color-success)" style={{ flexShrink: 0 }} />
-                ) : (
+                ) : contentInv ? (
                   <Loader2 size={15} className="animate-spin" color="var(--color-info)" style={{ flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: '15px', height: '15px', borderRadius: '50%', border: '2px dashed var(--text-muted)', flexShrink: 0 }} />
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontWeight: 600 }}>Razorpay Link</span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Test Mode Active</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    {paymentLinkUrl ? 'Test Mode Active' : contentInv ? 'Creating Link...' : 'Pending'}
+                  </span>
                 </div>
               </div>
 
@@ -389,12 +400,16 @@ export const CaseDetail: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', fontSize: '12px' }}>
                 {hasActionsSent ? (
                   <CheckCircle2 size={15} color="var(--color-success)" style={{ flexShrink: 0 }} />
-                ) : (
+                ) : contentInv ? (
                   <Loader2 size={15} className="animate-spin" color="var(--color-info)" style={{ flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: '15px', height: '15px', borderRadius: '50%', border: '2px dashed var(--text-muted)', flexShrink: 0 }} />
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontWeight: 600 }}>Email Dispatched</span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Delivered via SMTP</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    {hasActionsSent ? 'Delivered via SMTP' : contentInv ? 'Dispatching...' : 'Pending'}
+                  </span>
                 </div>
               </div>
 
@@ -411,13 +426,15 @@ export const CaseDetail: React.FC = () => {
               }}>
                 {isRecovered ? (
                   <CheckCircle2 size={15} color="var(--color-success)" style={{ flexShrink: 0 }} />
-                ) : (
+                ) : hasActionsSent ? (
                   <Loader2 size={15} className="animate-spin" color="var(--color-info)" style={{ flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: '15px', height: '15px', borderRadius: '50%', border: '2px dashed var(--text-muted)', flexShrink: 0 }} />
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontWeight: 600 }}>Payment Verified</span>
                   <span style={{ fontSize: '10px', color: isRecovered ? 'var(--color-success)' : 'var(--text-muted)' }}>
-                    {isRecovered ? 'Razorpay Verified' : 'Awaiting Payment...'}
+                    {isRecovered ? 'Razorpay Verified' : hasActionsSent ? 'Awaiting Payment...' : 'Pending'}
                   </span>
                 </div>
               </div>

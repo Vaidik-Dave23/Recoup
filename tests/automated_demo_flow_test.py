@@ -1,17 +1,16 @@
 """Targeted end-to-end automated recovery flow test for the Razorpay Buildathon demo.
 
 Verifies:
-1. Executing a fault scenario in Fault Lab (soft decline) automatically:
-   - Creates the order, failed payment, and recovery case
-   - Automatically runs LangGraph (Triage -> Strategy -> Policy Guard -> Generate Content -> Execute)
-   - Creates a real Razorpay Test Mode Payment Link
-   - Returns agent_result with investigation steps & action
-2. Executing a hard decline scenario (stolen card) automatically:
-   - Immediately escalates via policy guardrail
-   - Blocks automated payment link/email
-   - Creates escalation record with summary
+1. Executing a fault scenario in Fault Lab (soft decline) asynchronously:
+   - Returns case_id immediately (<100ms)
+   - Background LangGraph runs (Triage -> Strategy -> Policy Guard -> Generate Content -> Execute)
+   - AI investigations logged in real-time
+   - Razorpay Test Mode Payment Link created and dispatched via email
+2. Executing a hard decline scenario (stolen card) asynchronously:
+   - Returns case_id immediately
+   - Background LangGraph immediately halts via policy guardrail and creates escalation
 3. Razorpay Payment Link Verification & Sync:
-   - Calling POST /recovery-cases/{id}/verify-payment
+   - Automatic sync on GET /recovery-cases/{id} and POST /recovery-cases/{id}/verify-payment
    - When link is paid, automatically records RecoveryOutcome, marks case RECOVERED,
      updates financial_impact, updates Payment to SUCCEEDED, updates Order to PAID.
 """
@@ -65,22 +64,29 @@ async def main() -> None:
             )
             headers = {"Authorization": f"Bearer {reg['access_token']}"}
 
-            print("\n=== 2. Simulate Soft Decline in Fault Lab (One-Click Autonomous Flow) ===")
+            print("\n=== 2. Simulate Soft Decline in Fault Lab (Immediate Asynchronous Return) ===")
             executed = await call(
                 client, "POST", "/fault-scenarios/soft_decline/execute", 200, headers
             )
             assert executed["success"] is True
             case_id = executed["case_id"]
-            agent_res = executed.get("agent_result")
-            print(f"  agent_res: {agent_res}")
+            print(f"  Received immediate case_id: {case_id}")
 
-            invs = await call(client, "GET", f"/ai-investigations/case/{case_id}", 200, headers)
-            print(f"  investigations: {invs}")
+            print("\n=== 3. Poll and observe live background LangGraph progression ===")
+            invs = []
+            for attempt in range(25):
+                await asyncio.sleep(1.0)
+                invs = await call(client, "GET", f"/ai-investigations/case/{case_id}", 200, headers)
+                node_names = [i["node_name"] for i in invs]
+                print(f"  [Poll {attempt + 1}] Logged nodes: {node_names}")
+                if "execute" in node_names:
+                    break
+
             node_names = [i["node_name"] for i in invs]
-            print(f"  Logged nodes: {node_names}")
             assert "triage" in node_names, "Triage node must be logged"
             assert "strategize" in node_names, "Strategize node must be logged"
             assert "generate_content" in node_names, "Generate content node must be logged"
+            assert "execute" in node_names, "Execute node must be logged"
 
             content_inv = next(i for i in invs if i["node_name"] == "generate_content")
             resp_payload = content_inv["response_payload"]
@@ -102,15 +108,26 @@ async def main() -> None:
                 client, "POST", "/fault-scenarios/hard_decline/execute", 200, headers
             )
             hard_case_id = hard_exec["case_id"]
-            hard_res = hard_exec["agent_result"]
-            assert hard_res["escalated"] is True, "Hard decline must be automatically escalated"
-            print(f"  Hard decline automatically escalated: case_id={hard_case_id}")
+            print(f"  Hard decline initiated asynchronously: case_id={hard_case_id}")
 
-            escs = await call(client, "GET", f"/escalations/case/{hard_case_id}", 200, headers)
+            escs = []
+            for _ in range(15):
+                await asyncio.sleep(1.0)
+                escs = await call(client, "GET", f"/escalations/case/{hard_case_id}", 200, headers)
+                if escs:
+                    break
+
             assert len(escs) >= 1
             print(f"  Escalation record created: {escs[0]['reason']}")
 
-            print("\n=== 6. Test On-Demand Payment Link Verification Endpoint ===")
+            print("\n=== 6. Test Automatic Payment Status Sync on GET /recovery-cases/{id} ===")
+            case_detail = await call(
+                client, "GET", f"/recovery-cases/{case_id}", 200, headers
+            )
+            assert case_detail["id"] == case_id
+            print(f"  Case retrieved with auto-sync: status={case_detail['status']}")
+
+            print("\n=== 7. Test On-Demand Payment Link Verification Endpoint ===")
             verify_res = await call(
                 client, "POST", f"/recovery-cases/{case_id}/verify-payment", 200, headers
             )
@@ -125,3 +142,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+

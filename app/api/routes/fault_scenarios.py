@@ -1,10 +1,13 @@
+import asyncio
+import logging
 import random
 from typing import Annotated
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.db.database import get_db
+from app.db.database import AsyncSessionLocal, get_db
 from app.db.models.enums import PaymentStatus
 from app.db.models.merchant_user import MerchantUser
 from app.schemas.order import OrderCreate
@@ -15,6 +18,8 @@ from app.services.order_service import create_order
 from app.services.payment_service import create_payment
 from app.services.recovery_case_service import create_recovery_case
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/fault-scenarios",
@@ -75,6 +80,15 @@ SCENARIOS = {
 }
 
 
+async def _run_agent_bg(merchant_id: UUID, case_id: UUID) -> None:
+    """Run the AI recovery LangGraph agent asynchronously in the background."""
+    async with AsyncSessionLocal() as session:
+        try:
+            await run_case(session, merchant_id, case_id)
+        except Exception as exc:
+            logger.exception("Background agent execution failed for case %s: %s", case_id, exc)
+
+
 @router.get("")
 async def list_scenarios(current_user: CurrentUser):
     return list(SCENARIOS.values())
@@ -129,16 +143,12 @@ async def execute_scenario(
     )
     case = await create_recovery_case(db, current_user.merchant_id, case_in)
 
-    # 4. Automatically trigger AI recovery agent pipeline end-to-end
-    agent_result = None
-    try:
-        agent_result = await run_case(db, current_user.merchant_id, case.id)
-    except Exception as exc:
-        agent_result = {"error": str(exc)}
+    # 4. Asynchronously launch AI recovery agent in the background
+    asyncio.create_task(_run_agent_bg(current_user.merchant_id, case.id))
 
     return {
         "success": True,
         "case_id": str(case.id),
-        "message": f"Successfully simulated failure and executed AI recovery pipeline for {sc['name']}",
-        "agent_result": agent_result,
+        "message": f"Successfully simulated failure and initiated AI recovery pipeline for {sc['name']}",
     }
+

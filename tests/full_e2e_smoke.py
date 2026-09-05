@@ -209,15 +209,22 @@ async def main() -> None:
                 client, "POST", "/fault-scenarios/soft_decline/execute", 200, headers_a,
             )
             fault_case_id = executed["case_id"]
-            assert "agent_result" in executed and executed["agent_result"] is not None
-            fault_run = executed["agent_result"]
-            investigations = await call(
-                client, "GET", f"/ai-investigations/case/{fault_case_id}", 200, headers_a,
-            )
+            
+            # Poll for background agent execution
+            investigations = []
+            for _ in range(25):
+                await asyncio.sleep(1.0)
+                investigations = await call(
+                    client, "GET", f"/ai-investigations/case/{fault_case_id}", 200, headers_a,
+                )
+                node_names = [i["node_name"] for i in investigations]
+                if "execute" in node_names:
+                    break
+
             assert len(investigations) >= 2
             results.append(
-                f"PASS  Fault Lab seeded + automated agent ran end-to-end "
-                f"(escalated={fault_run.get('escalated')}, {len(investigations)} investigation steps logged)."
+                f"PASS  Fault Lab seeded + async agent ran end-to-end "
+                f"({len(investigations)} investigation steps logged in background)."
             )
 
             # ---------------------------------------------------------------
@@ -226,11 +233,12 @@ async def main() -> None:
                 results.append("SKIP  GEMINI_API_KEY not set -- agent ran in fallback mode only, not tested live.")
             else:
                 results.append(f"PASS  GEMINI_API_KEY is set (model: {settings.gemini_model})")
-                if fault_run.get("triage") and fault_run["triage"].get("summary"):
-                    results.append(f"      Triage summary: {fault_run['triage']['summary'][:120]}")
-                if fault_run.get("strategy"):
-                    conf = fault_run["strategy"].get("confidence")
-                    results.append(f"      Strategy confidence: {conf}")
+                triage_step = next((i for i in investigations if i["node_name"] == "triage"), None)
+                if triage_step and triage_step.get("response_payload", {}).get("summary"):
+                    results.append(f"      Triage summary: {triage_step['response_payload']['summary'][:120]}")
+                strat_step = next((i for i in investigations if i["node_name"] == "strategize"), None)
+                if strat_step:
+                    results.append(f"      Strategy confidence: {strat_step.get('confidence')}")
 
             # ---------------------------------------------------------------
             print("\n=== 6. Live Razorpay payment link check ===")
@@ -242,7 +250,7 @@ async def main() -> None:
                 )
             else:
                 await _check_payment_link_for_case(
-                    client, headers_a, fault_case_id, fault_run, results,
+                    client, headers_a, fault_case_id, None, results,
                     label="Fault Lab case",
                 )
 
@@ -340,14 +348,14 @@ async def main() -> None:
 
 
 async def _check_payment_link_for_case(
-    client, headers, case_id: str, run: dict, results: list[str], *,
+    client, headers, case_id: str, run: dict | None, results: list[str], *,
     label: str, check_in_email_body: bool = False,
 ) -> None:
     """Verify a live Razorpay test-mode Payment Link was actually created
     for this case's generate_content step, by reading it back from the
     AI investigation audit log and the persisted RecoveryAction -- not by
     trusting the in-memory run result alone."""
-    if run.get("escalated") or not run.get("action_id"):
+    if run and (run.get("escalated") or not run.get("action_id")):
         results.append(
             f"NOTE  {label}: case escalated before generate_content ran -- "
             f"no payment link attempt this run (non-deterministic, re-run to try again)."
@@ -385,9 +393,15 @@ async def _check_payment_link_for_case(
 
     # Cross-check it also landed on the persisted RecoveryAction, not just
     # in the investigation log.
-    action = await call(
-        client, "GET", f"/recovery-actions/{run['action_id']}", 200, headers,
-    )
+    if run and run.get("action_id"):
+        action = await call(
+            client, "GET", f"/recovery-actions/{run['action_id']}", 200, headers,
+        )
+    else:
+        actions = await call(
+            client, "GET", f"/recovery-actions/case/{case_id}", 200, headers,
+        )
+        action = actions[0] if actions else {}
     assert action.get("provider_ref") and f"rzp_link:{link_id}" in action["provider_ref"], (
         f"{label}: RecoveryAction.provider_ref does not reference the payment link "
         f"(got {action.get('provider_ref')!r})"
