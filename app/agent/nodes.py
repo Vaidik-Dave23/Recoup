@@ -145,8 +145,23 @@ class RecoveryAgentNodes:
     async def generate_content(self, state: RecoveryState) -> dict[str, Any]:
         if is_hard_decline(state.get("failure_reason")):
             raise ValueError(
-                f"Policy violation: Automated recovery content and payment links are forbidden for hard decline cases ({state.get('failure_reason')})"
+                f"Policy violation: Content generation is forbidden for hard decline cases ({state.get('failure_reason')})"
             )
+
+        # Idempotency guard: Return existing action if already created for this case
+        existing_action_res = await self.db.execute(
+            select(RecoveryAction)
+            .where(RecoveryAction.case_id == UUID(state["case_id"]))
+            .order_by(RecoveryAction.created_at.desc())
+            .limit(1)
+        )
+        existing_action = existing_action_res.scalar_one_or_none()
+        if existing_action is not None:
+            return {
+                "content": state.get("content") or {},
+                "action_id": str(existing_action.id),
+                "action_channel": existing_action.channel,
+            }
 
         strategy = state.get("strategy") or {}
         # Create the payment link first so we can supply it directly to the prompt

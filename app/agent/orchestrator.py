@@ -42,6 +42,19 @@ async def run_case(db: AsyncSession, merchant_id: UUID, case_id: UUID) -> Recove
     case = await _load_case(db, merchant_id, case_id)
     if case.status != RecoveryCaseStatus.IN_PROGRESS:
         raise ValueError("Cannot run recovery agent on a resolved case")
+
+    # Protection: Prevent duplicate first-pass runs if agent already executed/created actions
+    from app.db.models.recovery_action import RecoveryAction
+    existing_action = await db.scalar(
+        select(RecoveryAction).where(RecoveryAction.case_id == case.id).limit(1)
+    )
+    if existing_action is not None or case.stage not in (RecoveryStage.NEW, RecoveryStage.NEW.value, "new"):
+        return await _initial_state(db, merchant_id, case)
+
+    # Mark stage as TRIAGE during first-pass execution
+    case.stage = RecoveryStage.TRIAGE
+    await db.commit()
+
     if case.attempt_count >= settings.recovery_max_attempts:
         case.status = RecoveryCaseStatus.ESCALATED
         case.stage = RecoveryStage.ESCALATED

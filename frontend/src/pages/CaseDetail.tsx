@@ -66,12 +66,24 @@ export const CaseDetail: React.FC = () => {
   useEffect(() => {
     if (!caseData || caseData.status !== 'in_progress') return;
 
-    const interval = setInterval(() => {
-      fetchAllDetails(true);
+    const interval = setInterval(async () => {
+      // If an action with a Razorpay link is active, automatically invoke verifyPayment on each poll tick
+      const hasSentLink = actions.some(
+        (a) => (a.status === 'sent' || a.status === 'delivered') && a.provider_ref?.includes('rzp_link:')
+      );
+
+      if (hasSentLink && id) {
+        try {
+          await api.verifyPayment(id);
+        } catch {
+          // Ignore transient background verification errors
+        }
+      }
+      await fetchAllDetails(true);
     }, 1800);
 
     return () => clearInterval(interval);
-  }, [caseData?.status]);
+  }, [caseData?.status, actions, id]);
 
   const handleManualVerify = async () => {
     if (!id) return;
