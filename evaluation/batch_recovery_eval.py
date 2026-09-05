@@ -312,29 +312,66 @@ def write_results(cases: list[SyntheticCase], rows: list[EvaluationRow], summary
     return json_path, csv_path
 
 
+async def run_batch_evaluation(
+    n: int = 500,
+    concurrency: int = 8,
+    seed: int = 20260902,
+    progress_callback: Any = None,
+) -> dict[str, Any]:
+    """Execute synthetic batch recovery benchmark programmatically."""
+    if not settings.gemini_api_key:
+        raise ValueError("GEMINI_API_KEY is required to run the batch benchmark.")
+
+    cases = generate_cases(n, seed)
+    sem = asyncio.Semaphore(max(1, concurrency))
+    completed_count = 0
+
+    async def _eval_with_progress(c: SyntheticCase) -> EvaluationRow:
+        nonlocal completed_count
+        row = await evaluate_case(c, sem)
+        completed_count += 1
+        if progress_callback:
+            try:
+                progress_callback(completed_count, len(cases))
+            except Exception:
+                pass
+        return row
+
+    rows = await asyncio.gather(*(_eval_with_progress(case) for case in cases))
+    summary = summarize(cases, rows, seed)
+    json_path, csv_path = write_results(cases, rows, summary)
+    return {
+        "summary": summary,
+        "json_path": str(json_path),
+        "csv_path": str(csv_path),
+    }
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=100, help="Number of synthetic cases")
     parser.add_argument("--seed", type=int, default=20260902)
-    parser.add_argument("--concurrency", type=int, default=5)
+    parser.add_argument("--concurrency", type=int, default=8)
     args = parser.parse_args()
     if args.n < 1:
         raise SystemExit("--n must be >= 1")
     if not settings.gemini_api_key:
         raise SystemExit("GEMINI_API_KEY is required to run the batch benchmark.")
 
-    cases = generate_cases(args.n, args.seed)
-    sem = asyncio.Semaphore(max(1, args.concurrency))
-    rows = await asyncio.gather(*(evaluate_case(case, sem) for case in cases))
-    summary = summarize(cases, rows, args.seed)
-    json_path, csv_path = write_results(cases, rows, summary)
-
-    print(json.dumps(summary, indent=2))
-    print(f"\nJSON: {json_path}")
-    print(f"CSV:  {csv_path}")
-    if summary["api_errors"]:
+    print(f"Running synthetic recovery evaluation for {args.n} cases (concurrency={args.concurrency})...")
+    res = await run_batch_evaluation(
+        n=args.n,
+        concurrency=args.concurrency,
+        seed=args.seed,
+        progress_callback=lambda curr, total: print(f"  Evaluated: {curr}/{total} cases", end="\r", flush=True) if curr % 10 == 0 or curr == total else None
+    )
+    print("\n")
+    print(json.dumps(res["summary"], indent=2))
+    print(f"\nJSON: {res['json_path']}")
+    print(f"CSV:  {res['csv_path']}")
+    if res["summary"]["api_errors"]:
         print(
-            f"\\nWARNING: {summary['api_errors']} API/model calls failed. "
+            f"\nWARNING: {res['summary']['api_errors']} API/model calls failed. "
             "Those rows are excluded from decision metrics."
         )
 

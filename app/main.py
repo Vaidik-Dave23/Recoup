@@ -15,6 +15,7 @@ from app.api.routes.fault_scenarios import router as fault_scenarios_router
 from app.api.routes.audit_logs import router as audit_logs_router
 from app.api.routes.merchants import router as merchants_router
 from app.api.routes.checkout import router as checkout_router
+from app.api.routes.evaluation import router as evaluation_router
 from app.core.config import settings
 
 app = FastAPI(
@@ -53,3 +54,4 @@ app.include_router(fault_scenarios_router)
 app.include_router(audit_logs_router)
 app.include_router(merchants_router)
 app.include_router(checkout_router)
+app.include_router(evaluation_router)

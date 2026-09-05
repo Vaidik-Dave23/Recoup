@@ -196,4 +196,45 @@ export const api = {
       description?: string;
     }>('GET', `/checkout-info/${orderId}`);
   },
+
+  // Synthetic 500-Payment Evaluation Benchmark
+  async getLatestEvaluation() {
+    return request<{
+      has_result: boolean;
+      file_name?: string;
+      created_at?: string;
+      summary?: any;
+      message?: string;
+    }>('GET', '/evaluation/latest');
+  },
+
+  async runEvaluation(payload?: { n?: number; concurrency?: number }) {
+    return request<{
+      run_id: string;
+      status: string;
+      total: number;
+      completed: number;
+      progress_percentage: number;
+      message: string;
+    }>('POST', '/evaluation/run', payload);
+  },
+
+  async getEvaluationStatus(runId: string) {
+    return request<{
+      run_id: string;
+      status: 'running' | 'completed' | 'failed';
+      total: number;
+      completed: number;
+      progress_percentage: number;
+      elapsed_seconds: number;
+      started_at?: string;
+      completed_at?: string;
+      summary?: any;
+      error?: string;
+    }>('GET', `/evaluation/status/${runId}`);
+  },
+
+  async getEvaluationRuns() {
+    return request<any[]>('GET', '/evaluation/runs');
+  },
 };

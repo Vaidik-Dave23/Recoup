@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Loader2, ArrowRight, TrendingUp, AlertTriangle, ShieldCheck, RefreshCw, Layers } from 'lucide-react';
+import { Loader2, ArrowRight, TrendingUp, AlertTriangle, ShieldCheck, RefreshCw, Layers, Cpu } from 'lucide-react';
 import { api } from '../services/api';
 import { useToast } from '../components/Toast';
 import { formatCurrency } from '../lib/currency';
@@ -47,8 +47,6 @@ export const Dashboard: React.FC = () => {
   const priorityCases = data?.priority_queue || [];
   const recentActivity = data?.recent_activity || [];
 
-
-
   // Calculate percentage for visual summary
   const totalFinancialImpact = kpis.amount_at_risk + kpis.amount_recovered;
   const recoveryPercent = totalFinancialImpact > 0 ? (kpis.amount_recovered / totalFinancialImpact) * 100 : 0;
@@ -82,6 +80,40 @@ export const Dashboard: React.FC = () => {
             View At-Risk Queue <ArrowRight size={14} />
           </button>
         </div>
+      </div>
+
+      {/* 500-Payment Evaluation Spotlight */}
+      <div
+        className="card"
+        style={{
+          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(17, 24, 39, 0.6) 100%)',
+          border: '1px solid rgba(99, 102, 241, 0.25)',
+          padding: '16px 20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: 'var(--color-primary)' }}>
+            <Cpu size={20} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>500-Payment AI Evaluation</strong>
+              <span className="badge badge-info" style={{ fontSize: '10px' }}>Synthetic Benchmark</span>
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+              Deterministic evaluation measuring Gemini triage, policy guardrails, and customer response simulation across 500 cases.
+            </p>
+          </div>
+        </div>
+        <Link to="/evaluation" className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>View Benchmark</span> <ArrowRight size={13} />
+        </Link>
       </div>
 
       {/* KPIs Grid */}

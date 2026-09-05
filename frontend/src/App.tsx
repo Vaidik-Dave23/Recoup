@@ -19,6 +19,7 @@ import { Audit } from './pages/Audit';
 import { FaultLab } from './pages/FaultLab';
 import { Settings } from './pages/Settings';
 import { PayCheckout } from './pages/PayCheckout';
+import { Evaluation } from './pages/Evaluation';
 
 interface LayoutProps {
   user: any;
@@ -114,6 +115,7 @@ const AppContent: React.FC = () => {
         <Route path="/recovery/escalations" element={<Escalations />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/fault-lab" element={<FaultLab />} />
+        <Route path="/evaluation" element={<Evaluation />} />
         <Route path="/settings" element={<Settings user={user} onUserUpdate={setUser} />} />
       </Route>
 

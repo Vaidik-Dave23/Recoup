@@ -12,6 +12,7 @@ import {
   LogOut,
   User,
   Activity,
+  Cpu,
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -33,6 +34,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children, user, onLogout }) 
     { name: 'Escalations', path: '/recovery/escalations', icon: UserCheck },
     { name: 'Audit Trail', path: '/audit', icon: History },
     { name: 'Fault Lab', path: '/fault-lab', icon: FlaskConical },
+    { name: '500-Payment Eval', path: '/evaluation', icon: Cpu },
   ];
 
   const handleLogout = () => {
