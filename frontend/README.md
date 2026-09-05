@@ -4,9 +4,7 @@
 
 Recoup is an end-to-end revenue recovery platform that helps merchants investigate failed or at-risk payments, generate recovery strategies with AI, execute recovery outreach, and escalate uncertain cases to humans.
 
-Recoup is designed to process payment batches, surface useful recovery insights with low latency, and turn individual payment failures into actionable recovery workflows instead of leaving teams to investigate them manually.
-
-The project combines a React dashboard, FastAPI API, PostgreSQL persistence, a LangGraph recovery agent powered by Gemini, Razorpay test-mode Payment Links, SMTP email delivery, and a Fault Lab for reproducible recovery scenarios.
+The project combines a React dashboard, FastAPI API, PostgreSQL persistence, a LangGraph recovery agent powered by Gemini, Razorpay test-mode Payment Links, optional SMTP delivery, and a Fault Lab for reproducible recovery scenarios.
 
 > **Live demo:** https://recoup-one.vercel.app  
 > **Repository:** https://github.com/Vaidik-Dave23/Recoup
@@ -25,22 +23,6 @@ The system is organized into six major layers:
 4. **Data Layer** - PostgreSQL accessed asynchronously through SQLAlchemy, with Alembic for migrations.
 5. **Integrations** - Razorpay test-mode Payment Links and optional SMTP email delivery.
 6. **Infrastructure** - Vercel for the frontend and Azure App Service for the FastAPI backend, with Azure deployment/runtime logs.
-
----
-
-## Demo Flow
-
-The current demo shows the complete recovery journey from the merchant dashboard to an actual recovery action:
-
-1. A payment batch is monitored and recovery insights are surfaced on the dashboard.
-2. Fault Lab is used to create a controlled dummy payment failure.
-3. The recovery workflow analyzes the failure and moves through the responsible agent nodes.
-4. The system decides whether to recover the payment automatically or escalate it based on the configured confidence threshold.
-5. Recovery outreach is generated and sent through the configured email channel.
-6. The recovery email contains the Razorpay Payment Link generated in test mode.
-7. The link can be opened and completed using Razorpay's test environment, demonstrating the recovery flow end-to-end.
-
-This makes the demo reproducible without requiring a real merchant payment webhook or real-money transaction.
 
 ---
 
@@ -100,7 +82,6 @@ The important design decision is that the model does **not** get unlimited autho
 ### Merchant operations dashboard
 
 - Dashboard KPIs and recovery overview.
-- Payment batch monitoring and recovery insights.
 - At-risk recovery queue.
 - Detailed recovery case view.
 - Agent trace for individual cases.
@@ -108,10 +89,6 @@ The important design decision is that the model does **not** get unlimited autho
 - Escalation management.
 - Audit log / investigation history.
 - Merchant settings.
-
-### Payment batch insights
-
-Recoup is built around batch-level payment visibility so merchants can quickly understand where recovery opportunities are coming from instead of inspecting failures one by one. The dashboard surfaces the relevant recovery information while keeping the detailed investigation available at the case level.
 
 ### Fault Lab
 
@@ -123,7 +100,7 @@ Scenarios can be executed through the application and then passed through the sa
 
 ## AI Agent Architecture
 
-The recovery agent is implemented with **LangGraph** as a stateful workflow.
+The recovery agent is implemented with **LangGraph** as a stateful workflow, with a dedicated orchestration and policy layer around the graph so model output is checked against deterministic recovery rules before execution.
 
 ### First-pass run
 
@@ -157,7 +134,7 @@ RECOVERY_CONFIDENCE_THRESHOLD=0.55
 
 A strategy below the threshold is routed to human escalation.
 
-This is intentionally enforced in application logic rather than relying only on a prompt instruction.
+The backend policy layer can also override an unsafe or unsupported model recommendation based on the failure reason and recovery rules. This is intentionally enforced in application logic rather than relying only on a prompt instruction.
 
 ---
 
@@ -255,6 +232,9 @@ Recoup/
 │       └── App.tsx                # Routing and auth guards
 │
 ├── alembic/                       # Database migrations
+├── evaluation/
+│   ├── batch_recovery_eval.py       # Synthetic batch recovery benchmark
+│   └── results/                      # JSON/CSV benchmark outputs
 ├── tests/
 ├── docs/
 │   └── architecture.png
@@ -387,6 +367,25 @@ Never commit real credentials or `.env` files to source control.
 
 ---
 
+## Batch Recovery Evaluation
+
+Recoup includes a synthetic batch evaluation harness for testing the recovery decision workflow across different payment failure scenarios.
+
+The benchmark:
+- Generates reproducible synthetic recovery cases with a fixed seed.
+- Runs Gemini triage and strategy generation concurrently with configurable concurrency.
+- Evaluates the model output through the same deterministic backend recovery policy used by production.
+- Measures decision accuracy, escalation rate, policy overrides, API errors, simulated amount at risk, and simulated amount recovered.
+- Breaks results down by hard declines, soft declines, abandoned checkouts, and overdue invoices.
+
+A 500-case benchmark run completed with 499 valid evaluations and 1 API error. On the valid evaluations, the effective recovery decision reached **100% decision accuracy**, with **124 policy overrides** applying the deterministic safety policy. The benchmark simulated ₹14.44M of amount at risk and ₹6.44M recovered, a **44.55% simulated recovery rate by amount**.
+
+> **Important:** The recovered-money figures are synthetic benchmark outcomes, not real customer payments. They are useful for evaluating the workflow, not for claiming production recovery performance.
+
+The evaluation script is available at `evaluation/batch_recovery_eval.py`, with JSON and CSV run outputs stored under `evaluation/results/`.
+
+---
+
 ## Testing
 
 The repository includes focused smoke and compatibility tests:
@@ -399,6 +398,12 @@ python -m tests.business_state_test
 python -m tests.auth_compat_test
 python -m tests.razorpay_client_test
 python -m tests.full_e2e_smoke
+```
+
+Run the synthetic batch evaluation:
+
+```bash
+python -m evaluation.batch_recovery_eval --n 500 --seed 20260902 --concurrency 5
 ```
 
 ### Authentication compatibility coverage
@@ -459,6 +464,8 @@ Recoup is not just an LLM wrapper. The project treats the AI model as one compon
 - **Actions and AI investigations are persisted for traceability.**
 - **Razorpay Payment Links connect an AI recommendation to an actual payment workflow in test mode.**
 - **Human escalation is a first-class outcome instead of an error state.**
+- **A deterministic policy layer can override unsafe model recommendations.**
+- **The workflow includes a reproducible synthetic batch evaluation harness.**
 
 This makes Recoup a practical example of building an agentic system with real integrations, persistence, guardrails, and an operational UI.
 
@@ -468,9 +475,7 @@ This makes Recoup a practical example of building an agentic system with real in
 
 **Working end-to-end prototype.**
 
-The current build is demonstrated through a controlled payment-failure scenario in Fault Lab, followed by AI analysis, recovery decision-making, email outreach, and a Razorpay test-mode payment flow.
-
-The deployed application currently supports authentication, dashboard operations, payment batch insights, recovery case management, AI investigation/agent execution, recovery actions, escalation flows, outcomes, audit history, Fault Lab scenarios, Razorpay test-mode payment links, and SMTP email delivery.
+The deployed application currently supports authentication, dashboard operations, recovery case management, AI investigation/agent execution, recovery actions, escalation flows, outcomes, audit history, Fault Lab scenarios, Razorpay test-mode payment links, and optional SMTP delivery.
 
 ---
 
