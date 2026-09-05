@@ -180,4 +180,20 @@ export const api = {
   async getMerchantUsers() {
     return request<unknown[]>('GET', '/merchants/me/users');
   },
+
+  // Public Checkout Info
+  async getCheckoutInfo(orderId: string) {
+    return request<{
+      order_id: string;
+      amount: number;
+      currency: string;
+      status: string;
+      amount_paid: number;
+      key_id: string;
+      receipt?: string;
+      customer_name?: string;
+      customer_email?: string;
+      description?: string;
+    }>('GET', `/checkout-info/${orderId}`);
+  },
 };

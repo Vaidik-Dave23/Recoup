@@ -188,8 +188,21 @@ export const CaseDetail: React.FC = () => {
   const escalateInv = investigations.find((i) => i.node_name === 'escalate');
   const latestInv = investigations[investigations.length - 1];
 
-  const paymentLinkUrl = contentInv?.response_payload?.payment_link_url || 
-    (actions[0]?.provider_ref?.includes('rzp_link:') ? `https://rzp.io/i/${actions[0]?.provider_ref.split('rzp_link:')[1].trim().split(' ')[0]}` : null);
+  let paymentLinkUrl = contentInv?.response_payload?.payment_link_url || null;
+  if (!paymentLinkUrl && actions[0]?.provider_ref?.includes('rzp_link:')) {
+    const rawRef = actions[0].provider_ref.split('rzp_link:')[1].trim().split(' ')[0];
+    if (rawRef.startsWith('order_')) {
+      paymentLinkUrl = `/pay/${rawRef}`;
+    } else {
+      paymentLinkUrl = `https://rzp.io/i/${rawRef}`;
+    }
+  }
+  if (paymentLinkUrl && paymentLinkUrl.includes('api.razorpay.com/v1/checkout/hosted') && paymentLinkUrl.includes('order_id=')) {
+    const match = paymentLinkUrl.match(/order_id=([^&]+)/);
+    if (match && match[1]) {
+      paymentLinkUrl = `/pay/${match[1]}`;
+    }
+  }
 
   const isEscalated = caseData.status === 'escalated' || Boolean(escalateInv);
   const isRecovered = caseData.status === 'recovered';

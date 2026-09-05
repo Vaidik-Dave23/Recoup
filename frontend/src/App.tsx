@@ -18,6 +18,7 @@ import { Escalations } from './pages/Escalations';
 import { Audit } from './pages/Audit';
 import { FaultLab } from './pages/FaultLab';
 import { Settings } from './pages/Settings';
+import { PayCheckout } from './pages/PayCheckout';
 
 interface LayoutProps {
   user: any;
@@ -91,6 +92,9 @@ const AppContent: React.FC = () => {
 
   return (
     <Routes>
+      {/* Standalone Public Checkout Route */}
+      <Route path="/pay/:orderId" element={<PayCheckout />} />
+
       {/* Public / Guest Routes */}
       <Route element={<GuestLayout user={user} />}>
         <Route path="/" element={<Home />} />

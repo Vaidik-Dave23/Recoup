@@ -90,7 +90,8 @@ def create_recovery_payment_link(
                     },
                 })
                 order_id = order.get("id")
-                hosted_url = f"https://api.razorpay.com/v1/checkout/hosted?order_id={order_id}&key_id={settings.razorpay_key_id}"
+                frontend_base = (settings.frontend_url.split(",")[0].strip() if settings.frontend_url else "http://localhost:5173").rstrip("/")
+                hosted_url = f"{frontend_base}/pay/{order_id}"
                 return PaymentLinkResult(
                     True,
                     payment_link_id=order_id,
@@ -115,10 +116,23 @@ def fetch_payment_link_status(payment_link_id: str) -> dict:
         ord_status = ord_data.get("status")
         amount_paid = ord_data.get("amount_paid", 0)
         is_paid = ord_status == "paid" or (amount_paid and amount_paid > 0)
+
+        # Extra verification: check individual payment captures for this order
+        if not is_paid:
+            try:
+                payments = client.order.payments(payment_link_id)
+                for p in payments.get("items", []):
+                    if p.get("status") in ("captured", "authorized"):
+                        is_paid = True
+                        amount_paid = p.get("amount", amount_paid)
+                        break
+            except Exception:
+                pass
+
         return {
             "id": ord_data.get("id"),
             "status": "paid" if is_paid else (ord_status or "created"),
             "amount_paid": amount_paid,
-            "currency": ord_data.get("currency"),
+            "currency": ord_data.get("currency", "INR"),
         }
     return client.payment_link.fetch(payment_link_id)
