@@ -16,6 +16,7 @@ from app.services.recovery_case_service import (
     create_recovery_case,
     get_recovery_case,
     get_recovery_cases,
+    sync_case_payment_status,
     update_recovery_case,
 )
 
@@ -96,6 +97,35 @@ async def get_one(
         )
 
     return case
+
+
+@router.post(
+    "/{case_id}/verify-payment",
+)
+async def verify_payment(
+    case_id: UUID,
+    current_user: CurrentUser,
+    db: DBSession,
+):
+    case = await get_recovery_case(
+        db,
+        current_user.merchant_id,
+        case_id,
+    )
+
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recovery case not found",
+        )
+
+    sync_result = await sync_case_payment_status(db, current_user.merchant_id, case)
+    # Reload case to reflect updated fields
+    updated_case = await get_recovery_case(db, current_user.merchant_id, case_id)
+    return {
+        "sync_result": sync_result,
+        "case": updated_case,
+    }
 
 
 @router.patch(

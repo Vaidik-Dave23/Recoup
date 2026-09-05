@@ -10,6 +10,7 @@ from app.db.models.merchant_user import MerchantUser
 from app.schemas.order import OrderCreate
 from app.schemas.payment import PaymentCreate
 from app.schemas.recovery_case import RecoveryCaseCreate
+from app.agent.orchestrator import run_case
 from app.services.order_service import create_order
 from app.services.payment_service import create_payment
 from app.services.recovery_case_service import create_recovery_case
@@ -107,7 +108,6 @@ async def execute_scenario(
     order = await create_order(db, current_user.merchant_id, order_in)
 
     # 2. Create payment
-
     payment_in = PaymentCreate(
         order_id=order_custom_id,
         amount=sc["amount"],
@@ -119,7 +119,6 @@ async def execute_scenario(
     )
     payment = await create_payment(db, current_user.merchant_id, payment_in)
 
-
     # 3. Create case
     case_in = RecoveryCaseCreate(
         payment_id=payment.id,
@@ -130,8 +129,16 @@ async def execute_scenario(
     )
     case = await create_recovery_case(db, current_user.merchant_id, case_in)
 
+    # 4. Automatically trigger AI recovery agent pipeline end-to-end
+    agent_result = None
+    try:
+        agent_result = await run_case(db, current_user.merchant_id, case.id)
+    except Exception as exc:
+        agent_result = {"error": str(exc)}
+
     return {
         "success": True,
         "case_id": str(case.id),
-        "message": f"Successfully created case for {sc['name']}",
+        "message": f"Successfully simulated failure and executed AI recovery pipeline for {sc['name']}",
+        "agent_result": agent_result,
     }

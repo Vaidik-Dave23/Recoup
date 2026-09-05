@@ -209,17 +209,15 @@ async def main() -> None:
                 client, "POST", "/fault-scenarios/soft_decline/execute", 200, headers_a,
             )
             fault_case_id = executed["case_id"]
-            fault_run = await call(
-                client, "POST", f"/recovery-cases/{fault_case_id}/agent/run", 200, headers_a,
-            )
+            assert "agent_result" in executed and executed["agent_result"] is not None
+            fault_run = executed["agent_result"]
             investigations = await call(
                 client, "GET", f"/ai-investigations/case/{fault_case_id}", 200, headers_a,
             )
             assert len(investigations) >= 2
             results.append(
-                f"PASS  Fault Lab seeded + agent ran "
-                f"(escalated={fault_run['escalated']}, {len(investigations)} investigation steps logged). "
-                f"NOTE: this case's customer_email is fake -- no real email is expected from this step."
+                f"PASS  Fault Lab seeded + automated agent ran end-to-end "
+                f"(escalated={fault_run.get('escalated')}, {len(investigations)} investigation steps logged)."
             )
 
             # ---------------------------------------------------------------

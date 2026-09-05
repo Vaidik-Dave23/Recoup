@@ -98,6 +98,10 @@ export const api = {
     return request<unknown>('POST', `/recovery-cases/${caseId}/agent/resume`);
   },
 
+  async verifyPayment(caseId: string) {
+    return request<{ sync_result: any; case: any }>('POST', `/recovery-cases/${caseId}/verify-payment`);
+  },
+
   // AI Investigations (Trace Nodes)
   async getAIInvestigations(caseId: string) {
     return request<unknown[]>('GET', `/ai-investigations/case/${caseId}`);

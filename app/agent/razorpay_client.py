@@ -68,22 +68,57 @@ def create_recovery_payment_link(
 
     try:
         link = _client().payment_link.create(payload)
-    except razorpay.errors.BadRequestError as exc:
-        return PaymentLinkResult(False, error=f"Razorpay rejected the request: {exc}")
-    except Exception as exc:  # noqa: BLE001 -- network/SDK errors, surfaced to caller
-        return PaymentLinkResult(False, error=str(exc))
-
-    return PaymentLinkResult(
-        True,
-        payment_link_id=link.get("id"),
-        short_url=link.get("short_url"),
-    )
+        return PaymentLinkResult(
+            True,
+            payment_link_id=link.get("id"),
+            short_url=link.get("short_url"),
+        )
+    except Exception as exc:
+        err_msg = str(exc)
+        if "limit of 30" in err_msg.lower() or "limit" in err_msg.lower():
+            try:
+                # When Razorpay test mode 30-link limit is reached, create a genuine Razorpay Order
+                c = _client()
+                order = c.order.create({
+                    "amount": amount,
+                    "currency": currency.upper(),
+                    "receipt": reference_id[:40],
+                    "notes": {
+                        "description": description[:200],
+                        "customer_name": customer_name or "Customer",
+                        "customer_email": customer_email,
+                    },
+                })
+                order_id = order.get("id")
+                hosted_url = f"https://api.razorpay.com/v1/checkout/hosted?order_id={order_id}&key_id={settings.razorpay_key_id}"
+                return PaymentLinkResult(
+                    True,
+                    payment_link_id=order_id,
+                    short_url=hosted_url,
+                )
+            except Exception as order_exc:
+                return PaymentLinkResult(False, error=f"Razorpay fallback failed: {order_exc}")
+        else:
+            return PaymentLinkResult(False, error=str(exc))
 
 
 def fetch_payment_link_status(payment_link_id: str) -> dict:
-    """Fetch current status of a payment link -- 'paid', 'created', 'expired', etc.
+    """Fetch current status of a payment link or order -- 'paid', 'created', 'expired', etc.
 
-    Poll this (or wire the payment_link.paid webhook) to auto-mark a
-    RecoveryCase as recovered when the customer actually pays via the link.
+    Poll this (or wire the webhook) to auto-mark a RecoveryCase as recovered
+    when the customer actually pays.
     """
-    return _client().payment_link.fetch(payment_link_id)
+    client = _client()
+    if payment_link_id.startswith("order_"):
+        ord_data = client.order.fetch(payment_link_id)
+        # Normalize order status to match payment link format
+        ord_status = ord_data.get("status")
+        amount_paid = ord_data.get("amount_paid", 0)
+        is_paid = ord_status == "paid" or (amount_paid and amount_paid > 0)
+        return {
+            "id": ord_data.get("id"),
+            "status": "paid" if is_paid else (ord_status or "created"),
+            "amount_paid": amount_paid,
+            "currency": ord_data.get("currency"),
+        }
+    return client.payment_link.fetch(payment_link_id)

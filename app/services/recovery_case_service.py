@@ -13,7 +13,7 @@ from app.schemas.recovery_outcome import RecoveryOutcomeCreate
 from app.services.recovery_outcome_service import create_recovery_outcome
 
 
-from app.db.models.enums import PaymentStatus, RecoveryCaseStatus, RecoveryStage
+from app.db.models.enums import ActionStatus, PaymentStatus, RecoveryCaseStatus, RecoveryStage
 
 async def create_recovery_case(
     db: AsyncSession,
@@ -145,14 +145,14 @@ async def update_recovery_case(
     return case
 
 
-async def sync_case_payment_status(db: AsyncSession, merchant_id: UUID, case: RecoveryCase) -> None:
-    if case.status != "in_progress":
-        return
+async def sync_case_payment_status(db: AsyncSession, merchant_id: UUID, case: RecoveryCase) -> dict:
+    if case.status not in (RecoveryCaseStatus.IN_PROGRESS, "in_progress"):
+        return {"synced": False, "reason": "case_not_in_progress", "status": case.status}
 
-    # Find all sent actions for this case that have a payment link reference
+    # Find all sent or delivered actions for this case that have a payment link reference
     stmt = select(RecoveryAction).where(
         RecoveryAction.case_id == case.id,
-        RecoveryAction.status == "sent"
+        RecoveryAction.status.in_([ActionStatus.SENT, "sent", ActionStatus.DELIVERED, "delivered"])
     )
     actions_result = await db.execute(stmt)
     actions = actions_result.scalars().all()
@@ -170,20 +170,43 @@ async def sync_case_payment_status(db: AsyncSession, merchant_id: UUID, case: Re
         try:
             status_data = fetch_payment_link_status(payment_link_id)
             link_status = status_data.get("status")
-        except Exception:
+            amount_paid = status_data.get("amount_paid", 0)
+            paid_at = status_data.get("paid_at")
+        except Exception as exc:
             continue
         
-        if link_status == "paid":
+        is_paid = link_status == "paid" or (amount_paid and amount_paid > 0) or paid_at is not None
+        if is_paid:
             # Record recovery outcome
             outcome_stmt = select(RecoveryOutcome).where(RecoveryOutcome.action_id == action.id)
             existing_outcome = (await db.execute(outcome_stmt)).scalar_one_or_none()
             if not existing_outcome:
+                amount_recovered = amount_paid if (amount_paid and amount_paid > 0) else case.amount_at_risk
                 outcome_data = RecoveryOutcomeCreate(
                     case_id=case.id,
                     action_id=action.id,
                     recovered=True,
-                    amount_recovered=case.amount_at_risk,
+                    amount_recovered=amount_recovered,
                     notes=f"Auto-synced payment via Razorpay link: {payment_link_id}"
                 )
                 await create_recovery_outcome(db, merchant_id, outcome_data)
-                break
+                return {
+                    "synced": True,
+                    "payment_link_id": payment_link_id,
+                    "link_status": "paid",
+                    "amount_recovered": amount_recovered,
+                }
+            return {
+                "synced": True,
+                "payment_link_id": payment_link_id,
+                "link_status": "paid",
+                "already_recorded": True,
+            }
+        else:
+            return {
+                "synced": False,
+                "payment_link_id": payment_link_id,
+                "link_status": link_status or "issued",
+            }
+
+    return {"synced": False, "reason": "no_active_payment_link"}
